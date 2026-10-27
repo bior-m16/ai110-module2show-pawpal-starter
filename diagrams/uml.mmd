@@ -17,6 +17,7 @@ classDiagram
         +add_task(task) None
         +remove_task(task) None
         +get_pending_tasks() list~Task~
+        +complete_task(task) None
     }
 
     class Task {
@@ -33,8 +34,8 @@ classDiagram
     class Scheduler {
         +Owner owner
         +generate_plan() list~Task~
-        +detect_conflicts() list~tuple~
-        +explain_plan() str
+        +detect_conflicts(tasks) list~tuple~
+        +explain_plan(plan) str
     }
 
     Owner "1" *-- "*" Pet : has

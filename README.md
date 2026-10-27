@@ -42,16 +42,54 @@ pip install -r requirements.txt
 6. Connect your logic to the Streamlit UI in `app.py`.
 7. Refine UML so it matches what you actually built.
 
+## Implementation Summary
+
+The logic layer lives in `pawpal_system.py` and has four classes that mirror `diagrams/uml.mmd`:
+
+- **`Task`** is one care activity: title, the pet it belongs to, duration, priority (higher number is more urgent), scheduled start time, frequency (once, daily, weekly), and a completed flag. Completing a recurring task returns a copy dated one day or week later.
+- **`Pet`** holds a pet's details and its own list of tasks. It adds and removes tasks, lists the pending ones, and completes a task, adding the next occurrence if it recurs.
+- **`Owner`** holds the owner's available minutes and a list of pets. `get_all_tasks()` returns every pet's tasks in one list.
+- **`Scheduler`** is the planner. It holds no data of its own and reads everything through `Owner.get_all_tasks()`, so one plan covers all pets.
+
+How they work together: an `Owner` has many `Pet`s, and each `Pet` has many `Task`s. `Scheduler.generate_plan()` takes the pending tasks across all pets, picks them by priority (earliest time breaks ties) until the owner's available minutes run out, and returns them in time order. `detect_conflicts()` flags tasks whose times overlap, and `explain_plan()` writes out the plan, the tasks left out, and any conflicts. The plan respects each task's scheduled time and only flags overlaps; it never moves a task.
+
+`main.py` is a terminal demo of this, and `tests/test_pawpal.py` holds the tests (run with `pytest`).
+
 ## 🖥️ Sample Output
 
-Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
+Run the terminal demo with two pets (Mochi and Luna), 90 available minutes, and four tasks:
+
+```bash
+python main.py
+```
 
 ```
-# e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
+Today's Schedule for Jordan (90 min available)
+============================================================
+07:30 - Morning walk (Mochi, 30 min, priority 3)
+08:00 - Breakfast and medication (Luna, 10 min, priority 3)
+18:00 - Play session (Luna, 20 min, priority 2)
+Total 60 of 90 available minutes. Tasks were chosen by priority, then earliest time, and listed in time order.
+Left out: Grooming (Mochi, 45 min) did not fit in the remaining time.
+```
+
+Add `--conflict` to include a task that overlaps two others, so the scheduler flags it:
+
+```bash
+python main.py --conflict
+```
+
+```
+Today's Schedule for Jordan (90 min available)
+============================================================
+07:30 - Morning walk (Mochi, 30 min, priority 3)
+07:45 - Vet video call (Luna, 20 min, priority 3)
+08:00 - Breakfast and medication (Luna, 10 min, priority 3)
+18:00 - Play session (Luna, 20 min, priority 2)
+Total 80 of 90 available minutes. Tasks were chosen by priority, then earliest time, and listed in time order.
+Left out: Grooming (Mochi, 45 min) did not fit in the remaining time.
+Conflict: Morning walk (Mochi) overlaps Vet video call (Luna).
+Conflict: Vet video call (Luna) overlaps Breakfast and medication (Luna).
 ```
 
 ## 🧪 Testing PawPal+
