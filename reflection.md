@@ -7,6 +7,17 @@
 - Briefly describe your initial UML design.
 - What classes did you include, and what responsibilities did you assign to each?
 
+My initial design is built around what a pet owner needs: to add one or more pets, give each pet its own tasks, and track those tasks so they don't have to keep everything in their head. Each pet is its own instance with its own task list, so "walk Max" and "walk Luna" stay separate. I used four classes:
+
+- **Owner**: Holds the owner's name and daily available time, and keeps the list of pets. It can add and remove pets and gather tasks across all of them.
+- **Pet**: Holds the pet's details (name, species, age, notes) and owns its own list of tasks. It can add and remove tasks and report which are still pending.
+- **Task**: Represents one care activity, with a title, the name of the pet it belongs to, duration, priority, scheduled time (a datetime so start times can be compared for overlaps), frequency (once, daily, weekly), and a completed flag. It can mark itself complete, which is how progress is tracked; for a recurring task this returns the next occurrence, and for a one-time task it returns nothing.
+- **Scheduler**: Takes an owner and builds the daily plan from all pets' tasks. It orders them by priority and time, fits them into the available time, flags conflicts as pairs of overlapping tasks, and explains why the plan looks the way it does. It doesn't store data itself; it only reads from the owner.
+
+Relationships: an Owner owns many Pets and a Pet owns many Tasks (composition, since neither exists without its parent), and the Scheduler works on an Owner. Tasks carry their pet's name so the plan can still tell which pet each task is for after the tasks are gathered into one list.
+
+
+
 **b. Design changes**
 
 - Did your design change during implementation?
