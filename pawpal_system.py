@@ -11,7 +11,7 @@ Conventions:
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 RECURRENCE = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1)}
@@ -20,6 +20,11 @@ RECURRENCE = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1)}
 def _end_time(task: Task) -> datetime:
     """Return when a task finishes: its start time plus its duration."""
     return task.scheduled_time + timedelta(minutes=task.duration_minutes)
+
+
+def _overlaps(first: Task, second: Task) -> bool:
+    """Return True if two tasks share time; back-to-back tasks do not overlap."""
+    return first.scheduled_time < _end_time(second) and second.scheduled_time < _end_time(first)
 
 
 @dataclass
@@ -34,13 +39,17 @@ class Task:
     frequency: str = "once"  # "once", "daily", or "weekly"
     completed: bool = False
 
-    def mark_complete(self) -> Optional[Task]:
-        """Mark this task done; return the next occurrence if it recurs, else None."""
+    def mark_complete(self, now: Optional[datetime] = None) -> Optional[Task]:
+        """Mark this task done; return its next future occurrence if it recurs, else None."""
         self.completed = True
         step = RECURRENCE.get(self.frequency)
         if step is None:
             return None
-        return replace(self, scheduled_time=self.scheduled_time + step, completed=False)
+        now = now or datetime.now()
+        next_time = self.scheduled_time + step
+        while next_time <= now:  # a task finished late must not recur in the past
+            next_time += step
+        return replace(self, scheduled_time=next_time, completed=False)
 
 
 @dataclass
@@ -66,11 +75,11 @@ class Pet:
         """Return the tasks that are not yet completed."""
         return [t for t in self.tasks if not t.completed]
 
-    def complete_task(self, task: Task) -> None:
+    def complete_task(self, task: Task, now: Optional[datetime] = None) -> None:
         """Mark a task done and add its next occurrence to this pet if it recurs."""
         if task not in self.tasks:
             raise ValueError(f"{task.title!r} does not belong to {self.name}")
-        next_task = task.mark_complete()
+        next_task = task.mark_complete(now)
         if next_task is not None:
             self.add_task(next_task)
 
@@ -97,6 +106,17 @@ class Owner:
         """Return the tasks of every pet in one list."""
         return [task for pet in self.pets for task in pet.tasks]
 
+    def filter_tasks(
+        self, pet_name: Optional[str] = None, completed: Optional[bool] = None
+    ) -> list[Task]:
+        """Return tasks across all pets, optionally only one pet's and/or one status."""
+        return [
+            task
+            for task in self.get_all_tasks()
+            if (pet_name is None or task.pet_name == pet_name)
+            and (completed is None or task.completed == completed)
+        ]
+
 
 class Scheduler:
     """Builds a daily plan from an owner's pets and tasks. Holds no data of its own."""
@@ -105,14 +125,23 @@ class Scheduler:
         """Create a scheduler that plans for the given owner."""
         self.owner = owner
 
-    def generate_plan(self) -> list[Task]:
-        """Pick pending tasks across all pets by priority until the owner's time runs out.
+    @staticmethod
+    def sort_by_time(tasks: list[Task]) -> list[Task]:
+        """Return the tasks ordered by scheduled start time, earliest first."""
+        return sorted(tasks, key=lambda t: t.scheduled_time)
 
-        Higher priority wins, earlier scheduled time breaks ties. A task that doesn't
-        fit is skipped so a shorter one can still use the remaining minutes. The chosen
-        tasks come back in chronological order.
+    def generate_plan(self, day: Optional[date] = None) -> list[Task]:
+        """Pick one day's pending tasks across all pets by priority until time runs out.
+
+        Defaults to today. Higher priority wins, earlier scheduled time breaks ties. A
+        task that doesn't fit is skipped so a shorter one can still use the remaining
+        minutes. The chosen tasks come back in chronological order.
         """
-        pending = [t for t in self.owner.get_all_tasks() if not t.completed]
+        day = day or date.today()
+        pending = [
+            t for t in self.owner.filter_tasks(completed=False)
+            if t.scheduled_time.date() == day
+        ]
         by_importance = sorted(pending, key=lambda t: (-t.priority, t.scheduled_time))
 
         chosen: list[Task] = []
@@ -121,11 +150,11 @@ class Scheduler:
             if minutes_used + task.duration_minutes <= self.owner.available_minutes:
                 chosen.append(task)
                 minutes_used += task.duration_minutes
-        return sorted(chosen, key=lambda t: t.scheduled_time)
+        return self.sort_by_time(chosen)
 
     def detect_conflicts(self, tasks: list[Task]) -> list[tuple[Task, Task]]:
         """Return pairs of the given tasks whose scheduled times overlap."""
-        ordered = sorted(tasks, key=lambda t: t.scheduled_time)
+        ordered = self.sort_by_time(tasks)
         conflicts: list[tuple[Task, Task]] = []
         for i, first in enumerate(ordered):
             for second in ordered[i + 1:]:
@@ -133,6 +162,14 @@ class Scheduler:
                     break
                 conflicts.append((first, second))
         return conflicts
+
+    def conflicts_for(self, task: Task) -> list[Task]:
+        """Return the owner's pending tasks that a new task would overlap, so it can be warned about."""
+        return [
+            existing
+            for existing in self.owner.filter_tasks(completed=False)
+            if existing is not task and _overlaps(task, existing)
+        ]
 
     def explain_plan(self, plan: list[Task]) -> str:
         """Explain why each task in the given plan was placed where it was."""
@@ -152,10 +189,11 @@ class Scheduler:
             "Tasks were chosen by priority, then earliest time, and listed in time order."
         )
 
+        day = plan[0].scheduled_time.date()
         planned_ids = {id(t) for t in plan}
         left_out = [
-            t for t in self.owner.get_all_tasks()
-            if not t.completed and id(t) not in planned_ids
+            t for t in self.owner.filter_tasks(completed=False)
+            if t.scheduled_time.date() == day and id(t) not in planned_ids
         ]
         for task in left_out:
             lines.append(

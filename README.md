@@ -46,12 +46,12 @@ pip install -r requirements.txt
 
 The logic layer lives in `pawpal_system.py` and has four classes that mirror `diagrams/uml.mmd`:
 
-- **`Task`** is one care activity: title, the pet it belongs to, duration, priority (higher number is more urgent), scheduled start time, frequency (once, daily, weekly), and a completed flag. Completing a recurring task returns a copy dated one day or week later.
+- **`Task`** is one care activity: title, the pet it belongs to, duration, priority (higher number is more urgent), scheduled start time, frequency (once, daily, weekly), and a completed flag. Completing a recurring task returns a copy on its next future occurrence, so a task finished late never recurs in the past.
 - **`Pet`** holds a pet's details and its own list of tasks. It adds and removes tasks, lists the pending ones, and completes a task, adding the next occurrence if it recurs.
-- **`Owner`** holds the owner's available minutes and a list of pets. `get_all_tasks()` returns every pet's tasks in one list.
-- **`Scheduler`** is the planner. It holds no data of its own and reads everything through `Owner.get_all_tasks()`, so one plan covers all pets.
+- **`Owner`** holds the owner's available minutes and a list of pets. `get_all_tasks()` returns every pet's tasks in one list, and `filter_tasks()` narrows that list by pet and/or completion status.
+- **`Scheduler`** is the planner. It holds no data of its own and reads everything through the owner's methods, so one plan covers all pets.
 
-How they work together: an `Owner` has many `Pet`s, and each `Pet` has many `Task`s. `Scheduler.generate_plan()` takes the pending tasks across all pets, picks them by priority (earliest time breaks ties) until the owner's available minutes run out, and returns them in time order. `detect_conflicts()` flags tasks whose times overlap, and `explain_plan()` writes out the plan, the tasks left out, and any conflicts. The plan respects each task's scheduled time and only flags overlaps; it never moves a task.
+How they work together: an `Owner` has many `Pet`s, and each `Pet` has many `Task`s. `Scheduler.generate_plan()` takes one day's pending tasks across all pets (today by default), picks them by priority (earliest time breaks ties) until the owner's available minutes run out, and returns them in time order. `sort_by_time()` orders any list of tasks. `detect_conflicts()` flags tasks whose times overlap, `conflicts_for()` warns about a new task before it is added, and `explain_plan()` writes out the plan, the tasks left out, and any conflicts. The plan respects each task's scheduled time and only flags overlaps; it never moves a task.
 
 `main.py` is a terminal demo of this, and `tests/test_pawpal.py` holds the tests (run with `pytest`).
 
@@ -71,15 +71,51 @@ Today's Schedule for Jordan (90 min available)
 18:00 - Play session (Luna, 20 min, priority 2)
 Total 60 of 90 available minutes. Tasks were chosen by priority, then earliest time, and listed in time order.
 Left out: Grooming (Mochi, 45 min) did not fit in the remaining time.
+
+Tasks in the order they were added (grouped by pet):
+  Mon 15:00 Grooming (Mochi, pending)
+  Mon 07:30 Morning walk (Mochi, pending)
+  Mon 18:00 Play session (Luna, pending)
+  Mon 08:00 Breakfast and medication (Luna, pending)
+
+Sorted by time:
+  Mon 07:30 Morning walk (Mochi, pending)
+  Mon 08:00 Breakfast and medication (Luna, pending)
+  Mon 15:00 Grooming (Mochi, pending)
+  Mon 18:00 Play session (Luna, pending)
+
+Completed 'Morning walk'; its next occurrence was added.
+
+Filter: Mochi's tasks
+  Mon 07:30 Morning walk (Mochi, done)
+  Mon 15:00 Grooming (Mochi, pending)
+  Tue 07:30 Morning walk (Mochi, pending)
+
+Filter: pending tasks
+  Mon 08:00 Breakfast and medication (Luna, pending)
+  Mon 15:00 Grooming (Mochi, pending)
+  Mon 18:00 Play session (Luna, pending)
+  Tue 07:30 Morning walk (Mochi, pending)
+
+Filter: done tasks
+  Mon 07:30 Morning walk (Mochi, done)
+
+Filter: Luna's pending tasks
+  Mon 08:00 Breakfast and medication (Luna, pending)
+  Mon 18:00 Play session (Luna, pending)
 ```
 
-Add `--conflict` to include a task that overlaps two others, so the scheduler flags it:
+The tasks are added in reverse time order on purpose, so the "Sorted by time" view shows `sort_by_time()` at work, and the filters show `filter_tasks()` by pet, by status, and by both. The weekdays depend on the day you run it. A task completed after its time recurs on its next future occurrence, which is why the walk's next one is on Tuesday.
+
+Add `--conflict` to include a task that overlaps two others. The scheduler warns about it when the task is added and flags it in the plan:
 
 ```bash
 python main.py --conflict
 ```
 
 ```
+Warning: Vet video call overlaps Morning walk (Mochi).
+Warning: Vet video call overlaps Breakfast and medication (Luna).
 Today's Schedule for Jordan (90 min available)
 ============================================================
 07:30 - Morning walk (Mochi, 30 min, priority 3)
@@ -90,6 +126,42 @@ Total 80 of 90 available minutes. Tasks were chosen by priority, then earliest t
 Left out: Grooming (Mochi, 45 min) did not fit in the remaining time.
 Conflict: Morning walk (Mochi) overlaps Vet video call (Luna).
 Conflict: Vet video call (Luna) overlaps Breakfast and medication (Luna).
+
+Tasks in the order they were added (grouped by pet):
+  Mon 15:00 Grooming (Mochi, pending)
+  Mon 07:30 Morning walk (Mochi, pending)
+  Mon 18:00 Play session (Luna, pending)
+  Mon 08:00 Breakfast and medication (Luna, pending)
+  Mon 07:45 Vet video call (Luna, pending)
+
+Sorted by time:
+  Mon 07:30 Morning walk (Mochi, pending)
+  Mon 07:45 Vet video call (Luna, pending)
+  Mon 08:00 Breakfast and medication (Luna, pending)
+  Mon 15:00 Grooming (Mochi, pending)
+  Mon 18:00 Play session (Luna, pending)
+
+Completed 'Morning walk'; its next occurrence was added.
+
+Filter: Mochi's tasks
+  Mon 07:30 Morning walk (Mochi, done)
+  Mon 15:00 Grooming (Mochi, pending)
+  Tue 07:30 Morning walk (Mochi, pending)
+
+Filter: pending tasks
+  Mon 07:45 Vet video call (Luna, pending)
+  Mon 08:00 Breakfast and medication (Luna, pending)
+  Mon 15:00 Grooming (Mochi, pending)
+  Mon 18:00 Play session (Luna, pending)
+  Tue 07:30 Morning walk (Mochi, pending)
+
+Filter: done tasks
+  Mon 07:30 Morning walk (Mochi, done)
+
+Filter: Luna's pending tasks
+  Mon 07:45 Vet video call (Luna, pending)
+  Mon 08:00 Breakfast and medication (Luna, pending)
+  Mon 18:00 Play session (Luna, pending)
 ```
 
 ## 🧪 Testing PawPal+

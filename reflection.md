@@ -29,6 +29,13 @@ After writing the class skeleton in `pawpal_system.py`, I reviewed it for missin
 2. **`Scheduler.detect_conflicts()` now takes a list of tasks.** With no argument it was unclear which tasks it checked (all of them, or only the final plan). Passing the tasks in makes it reusable on either.
 3. **`Scheduler.explain_plan()` now takes the plan.** The Scheduler is meant to hold no data, so it can't remember the plan it last built. Passing the plan in keeps it stateless and lets the explanation be rebuilt from each task's priority and time.
 
+After the first implementation I reviewed `main.py` and the logic it calls, and made a second round of improvements:
+
+- **Fixed a bug where tomorrow's recurring task appeared in today's plan.** `generate_plan()` now takes a day (today by default) and only plans tasks on that day.
+- **Fixed recurrence for late completion.** A task finished after its time now recurs on its next future occurrence instead of a date already in the past.
+- **Added `Scheduler.sort_by_time()` and `Owner.filter_tasks()`** so sorting and filtering by pet and status are reusable instead of being done by hand in each place.
+- **Added `Scheduler.conflicts_for(task)`** so the UI can warn about an overlap when a task is added, not only after the plan is built.
+
 Issues I noticed during that review and how I settled them when implementing the classes:
 - **`pet_name` duplicates the pet's name.** `Pet.add_task()` now sets it, and `Owner.add_pet()` sets it on any tasks a pet already has. It can still go stale if a pet is renamed later.
 - **`priority` meaning.** It is an `int` where a higher number is more urgent (1 = low, 2 = medium, 3 = high). The Streamlit UI uses low/medium/high, so it will need to map those to numbers.

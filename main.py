@@ -14,6 +14,15 @@ def at(hour: int, minute: int = 0) -> datetime:
     return today.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
+def show(heading: str, tasks: list[Task]) -> None:
+    print(f"\n{heading}")
+    if not tasks:
+        print("  (none)")
+    for task in tasks:
+        status = "done" if task.completed else "pending"
+        print(f"  {task.scheduled_time:%a %H:%M} {task.title} ({task.pet_name}, {status})")
+
+
 def main() -> None:
     owner = Owner(name="Jordan", available_minutes=90)
 
@@ -22,20 +31,40 @@ def main() -> None:
     owner.add_pet(mochi)
     owner.add_pet(luna)
 
-    mochi.add_task(Task("Morning walk", "", 30, 3, at(7, 30), "daily"))
+    scheduler = Scheduler(owner)
+
+    # Added on purpose in reverse time order, mixed across pets.
+    luna.add_task(Task("Play session", "", 20, 2, at(18, 0)))
     mochi.add_task(Task("Grooming", "", 45, 1, at(15, 0), "weekly"))
     luna.add_task(Task("Breakfast and medication", "", 10, 3, at(8, 0), "daily"))
-    luna.add_task(Task("Play session", "", 20, 2, at(18, 0)))
+    walk = Task("Morning walk", "", 30, 3, at(7, 30), "daily")
+    mochi.add_task(walk)
 
     if "--conflict" in sys.argv:
-        luna.add_task(Task("Vet video call", "", 20, 3, at(7, 45)))
+        vet_call = Task("Vet video call", "", 20, 3, at(7, 45))
+        for clash in scheduler.conflicts_for(vet_call):
+            print(f"Warning: Vet video call overlaps {clash.title} ({clash.pet_name}).")
+        luna.add_task(vet_call)
 
-    scheduler = Scheduler(owner)
     plan = scheduler.generate_plan()
 
     print(f"Today's Schedule for {owner.name} ({owner.available_minutes} min available)")
     print("=" * 60)
     print(scheduler.explain_plan(plan))
+
+    show("Tasks in the order they were added (grouped by pet):", owner.get_all_tasks())
+    show("Sorted by time:", scheduler.sort_by_time(owner.get_all_tasks()))
+
+    mochi.complete_task(walk)
+    print(f"\nCompleted '{walk.title}'; its next occurrence was added.")
+
+    show("Filter: Mochi's tasks", scheduler.sort_by_time(owner.filter_tasks(pet_name="Mochi")))
+    show("Filter: pending tasks", scheduler.sort_by_time(owner.filter_tasks(completed=False)))
+    show("Filter: done tasks", scheduler.sort_by_time(owner.filter_tasks(completed=True)))
+    show(
+        "Filter: Luna's pending tasks",
+        scheduler.sort_by_time(owner.filter_tasks(pet_name="Luna", completed=False)),
+    )
 
 
 if __name__ == "__main__":
