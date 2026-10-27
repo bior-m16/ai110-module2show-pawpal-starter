@@ -76,6 +76,8 @@ I used AI for design brainstorming first, then for writing code and tests. Befor
 
 The most helpful prompts asked it to brainstorm before executing, and to review something I already had ("any missing relationships or logic bottlenecks?"). Giving it a specific requirement, such as the Scheduler reading from the Owner's all-tasks method, kept it from taking a shortcut.
 
+Later in the project I asked it to review my `main.py` demo for logic that felt manual or too simple, and it suggested the algorithm improvements I then built: sorting tasks by time, filtering by pet and status, recurring-task handling, and conflict detection. I also used it to simplify the finished algorithms (sharing one overlap rule and one day filter) and to write the tests.
+
 **b. Judgment and verification**
 
 - Describe one moment where you did not accept an AI suggestion as-is.
@@ -86,6 +88,8 @@ I accepted its design suggestions after reading them: adding `pet_name` to `Task
 Two of its outputs needed correcting after I checked them. First, it wrote a nested generic return type for `detect_conflicts()` in the UML. When I pasted the diagram into the Mermaid Live Editor it rendered wrongly as `list<tuple>Task,Task<>`, so the type was simplified to `list~tuple~`. Second, its first tests passed with `python -m pytest` but the plain `pytest` command in my README failed to import `pawpal_system`, so a `pytest.ini` was added to fix that.
 
 I verified the results by running them: rendering the diagram, running `main.py` with and without the overlapping `--conflict` task to see the conflict lines, and running pytest myself and getting the same two passing tests.
+
+I also changed one of its results later. I had asked for a recurring task's next due date to be "today + 1 day", and it implemented that for weekly tasks as well. I realized that a weekly task tied to a specific day of the week would drift to a different weekday if it was completed late, so I asked for weekday alignment. The code now keeps weekly tasks on their weekday and still uses today + 1 day for daily ones. I confirmed it with new tests for late, very late, and early completion, and by running the app in the browser.
 
 ---
 

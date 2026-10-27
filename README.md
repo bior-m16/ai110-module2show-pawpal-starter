@@ -141,14 +141,46 @@ Conflict: Morning walk (Mochi, 07:30-08:00) overlaps Vet video call (Luna, 07:45
 # Run the full test suite:
 pytest
 
-# Run with coverage:
-pytest --cov
+# Show each test by name:
+pytest -v
 ```
 
-Sample test output:
+Sample test output (`pytest -v`):
 
 ```
-# Paste your pytest output here
+============================= test session starts =============================
+collected 28 items
+
+tests/test_pawpal.py::test_mark_complete_changes_task_status PASSED      [  3%]
+tests/test_pawpal.py::test_adding_task_increases_pet_task_count PASSED   [  7%]
+tests/test_pawpal.py::test_sort_by_time_orders_earliest_first PASSED     [ 10%]
+tests/test_pawpal.py::test_filter_tasks_by_pet_and_status PASSED         [ 14%]
+tests/test_pawpal.py::test_once_task_has_no_next_occurrence PASSED       [ 17%]
+tests/test_pawpal.py::test_daily_task_recurs_next_day PASSED             [ 21%]
+tests/test_pawpal.py::test_weekly_task_recurs_next_week PASSED           [ 25%]
+tests/test_pawpal.py::test_weekly_task_completed_late_keeps_its_weekday PASSED [ 28%]
+tests/test_pawpal.py::test_weekly_task_many_weeks_late_lands_on_the_next_same_weekday PASSED [ 32%]
+tests/test_pawpal.py::test_weekly_task_completed_early_waits_for_next_weeks_slot PASSED [ 35%]
+tests/test_pawpal.py::test_next_occurrence_is_one_period_after_the_completion_date PASSED [ 39%]
+tests/test_pawpal.py::test_early_completion_is_also_counted_from_today PASSED [ 42%]
+tests/test_pawpal.py::test_recurrence_crosses_month_and_year_boundaries PASSED [ 46%]
+tests/test_pawpal.py::test_next_occurrence_is_a_new_task_and_keeps_the_details PASSED [ 50%]
+tests/test_pawpal.py::test_pet_complete_task_adds_next_occurrence PASSED [ 53%]
+tests/test_pawpal.py::test_complete_task_rejects_task_from_another_pet PASSED [ 57%]
+tests/test_pawpal.py::test_plan_includes_tasks_from_every_pet_in_time_order PASSED [ 60%]
+tests/test_pawpal.py::test_plan_only_includes_the_requested_day PASSED   [ 64%]
+tests/test_pawpal.py::test_plan_drops_lowest_priority_task_that_does_not_fit PASSED [ 67%]
+tests/test_pawpal.py::test_plan_skips_completed_tasks PASSED             [ 71%]
+tests/test_pawpal.py::test_empty_owner_has_empty_plan_and_explanation PASSED [ 75%]
+tests/test_pawpal.py::test_detect_conflicts_finds_overlapping_pair PASSED [ 78%]
+tests/test_pawpal.py::test_back_to_back_tasks_do_not_conflict PASSED     [ 82%]
+tests/test_pawpal.py::test_warning_for_two_tasks_at_the_same_time_for_the_same_pet PASSED [ 85%]
+tests/test_pawpal.py::test_warning_for_two_tasks_at_the_same_time_for_different_pets PASSED [ 89%]
+tests/test_pawpal.py::test_no_warnings_when_nothing_overlaps_or_nothing_exists PASSED [ 92%]
+tests/test_pawpal.py::test_warnings_ignore_completed_tasks_and_other_days PASSED [ 96%]
+tests/test_pawpal.py::test_conflicts_for_warns_before_a_task_is_added PASSED [100%]
+
+============================= 28 passed in 0.06s ==============================
 ```
 
 ## 📐 Smarter Scheduling
@@ -192,10 +224,10 @@ When a daily or weekly task is completed, a new `Task` is created for its next o
 
 Describe your app in numbered steps so a reader can follow along without watching a video:
 
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
+1. Start the app with `streamlit run app.py`. Set the owner's name and how many minutes they have available today.
+2. In **Add a Pet**, enter a name, species, and age, and click **Add pet**. Add as many pets as you like; each one keeps its own tasks. A duplicate or empty name shows an error.
+3. In **Add a Task**, pick a pet, then enter the task's title, duration, priority, start time, and whether it repeats (once, daily, weekly), and click **Add task**.
+4. The **All tasks** table lists every pet's tasks sorted by time. Use the pet and status filters to narrow it. If two tasks overlap, a warning appears under the table until the overlap is fixed.
+5. Click **Generate schedule** to see today's plan. Tasks are chosen by priority until the available minutes run out, listed in time order, and **Why this plan?** explains what was included, what was left out, and any conflicts.
 
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
