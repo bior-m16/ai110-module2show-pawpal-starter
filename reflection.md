@@ -44,10 +44,14 @@ Issues I noticed during that review and how I settled them when implementing the
 - What constraints does your scheduler consider (for example: time, priority, preferences)?
 - How did you decide which constraints mattered most?
 
+The scheduler considers the owner's available minutes, each task's priority, and its scheduled time. I ranked priority first, because a missed medication matters more than a missed play session. Time available came next, as the hard limit on what fits. Scheduled time breaks ties and sets the order the plan is shown in.
+
 **b. Tradeoffs**
 
 - Describe one tradeoff your scheduler makes.
 - Why is that tradeoff reasonable for this scenario?
+
+The scheduler picks tasks greedily by priority and never moves a task; it only flags overlaps. That can leave out a low-priority task that a different combination would have fit, and it leaves conflicts for the owner to resolve. This is reasonable here because the owner chose those times, the logic stays simple to explain, and a pet care day has few tasks.
 
 ---
 
@@ -82,10 +86,14 @@ I verified the results by running them: rendering the diagram, running `main.py`
 - What behaviors did you test?
 - Why were these tests important?
 
+I wrote two pytest tests: completing a task changes its status, and adding a task to a pet increases its task count. They cover the basic building blocks the scheduler depends on. I also ran `main.py`, with and without an overlapping task, to see the plan, the left-out task, and the conflict lines.
+
 **b. Confidence**
 
 - How confident are you that your scheduler works correctly?
 - What edge cases would you test next if you had more time?
+
+I'm fairly confident in the basics, but only moderately confident in the scheduler, because pytest doesn't cover it yet and I've only checked it by running one scenario. Next I would test recurring tasks (daily and weekly), a pet with no tasks, an owner with no pets, tasks that don't fit the available time, tasks that touch end-to-start without overlapping, and equal priorities.
 
 ---
 
@@ -95,10 +103,16 @@ I verified the results by running them: rendering the diagram, running `main.py`
 
 - What part of this project are you most satisfied with?
 
+I'm most satisfied that the Scheduler plans across all pets through `Owner.get_all_tasks()`, and that the design held up well when I turned the UML into code.
+
 **b. What you would improve**
 
 - If you had another iteration, what would you improve or redesign?
 
+I would connect the logic to the Streamlit UI, add tests for the scheduler, and replace the `pet_name` string on `Task` with a real link to its `Pet` so a rename can't leave it stale.
+
 **c. Key takeaway**
 
 - What is one important thing you learned about designing systems or working with AI on this project?
+
+Settling the design before writing code made the implementation much easier, and AI works best when I give it a clear design to build from and then check its output by running it.
