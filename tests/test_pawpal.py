@@ -93,12 +93,65 @@ def test_weekly_task_recurs_next_week():
     assert nxt.scheduled_time == at(7, 30, date(2026, 11, 3))
 
 
-def test_late_completion_rolls_next_occurrence_into_the_future():
+def test_weekly_task_completed_late_keeps_its_weekday():
+    task = make_task(frequency="weekly")  # due Tue Oct 27
+
+    nxt = task.mark_complete(now=at(9, 0, date(2026, 10, 29)))  # completed Thursday
+
+    assert nxt.scheduled_time == at(7, 30, date(2026, 11, 3))
+    assert nxt.scheduled_time.weekday() == task.scheduled_time.weekday()
+
+
+def test_weekly_task_many_weeks_late_lands_on_the_next_same_weekday():
+    task = make_task(frequency="weekly")  # due Tue Oct 27, completed Wed Nov 18
+
+    nxt = task.mark_complete(now=at(9, 0, date(2026, 11, 18)))
+
+    assert nxt.scheduled_time == at(7, 30, date(2026, 11, 24))
+    assert nxt.scheduled_time.weekday() == task.scheduled_time.weekday()
+
+
+def test_weekly_task_completed_early_waits_for_next_weeks_slot():
+    task = make_task(frequency="weekly")  # due Tue Oct 27, done on Sat Oct 24
+
+    nxt = task.mark_complete(now=at(9, 0, date(2026, 10, 24)))
+
+    assert nxt.scheduled_time == at(7, 30, date(2026, 11, 3))
+
+
+def test_next_occurrence_is_one_period_after_the_completion_date():
     task = make_task(frequency="daily")  # due Oct 27, completed Oct 30
 
     nxt = task.mark_complete(now=at(9, 0, date(2026, 10, 30)))
 
     assert nxt.scheduled_time == at(7, 30, date(2026, 10, 31))
+
+
+def test_early_completion_is_also_counted_from_today():
+    task = make_task(frequency="daily")  # due Oct 27, completed a week early
+
+    nxt = task.mark_complete(now=at(9, 0, date(2026, 10, 20)))
+
+    assert nxt.scheduled_time == at(7, 30, date(2026, 10, 21))
+
+
+def test_recurrence_crosses_month_and_year_boundaries():
+    task = Task("Meds", "Mochi", 5, 3, datetime(2026, 12, 31, 8, 0), "daily")
+
+    nxt = task.mark_complete(now=datetime(2026, 12, 31, 9, 0))
+
+    assert nxt.scheduled_time == datetime(2027, 1, 1, 8, 0)
+
+
+def test_next_occurrence_is_a_new_task_and_keeps_the_details():
+    task = make_task(frequency="daily")
+
+    nxt = task.mark_complete(now=at(8))
+
+    assert nxt is not task
+    assert (nxt.title, nxt.pet_name, nxt.duration_minutes, nxt.priority, nxt.frequency) == (
+        task.title, task.pet_name, task.duration_minutes, task.priority, task.frequency
+    )
 
 
 def test_pet_complete_task_adds_next_occurrence():

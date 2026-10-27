@@ -32,7 +32,7 @@ After writing the class skeleton in `pawpal_system.py`, I reviewed it for missin
 After the first implementation I reviewed `main.py` and the logic it calls, and made a second round of improvements:
 
 - **Fixed a bug where tomorrow's recurring task appeared in today's plan.** `generate_plan()` now takes a day (today by default) and only plans tasks on that day.
-- **Fixed recurrence for late completion.** A task finished after its time now recurs on its next future occurrence instead of a date already in the past.
+- **Fixed recurrence for late completion.** A daily task now recurs one day after the completion date, so it can't land in the past. A weekly task keeps its weekday: the next one is the first same-weekday slot after today, so a Tuesday task finished on Thursday still recurs on a Tuesday.
 - **Added `Scheduler.sort_by_time()` and `Owner.filter_tasks()`** so sorting and filtering by pet and status are reusable instead of being done by hand in each place.
 - **Added `Scheduler.conflicts_for(task)`** so the UI can warn about an overlap when a task is added, not only after the plan is built.
 

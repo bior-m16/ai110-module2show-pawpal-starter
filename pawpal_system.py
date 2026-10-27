@@ -40,14 +40,24 @@ class Task:
     completed: bool = False
 
     def mark_complete(self, now: Optional[datetime] = None) -> Optional[Task]:
-        """Mark this task done; return its next future occurrence if it recurs, else None."""
+        """Mark this task done; if it recurs, return a new task for its next occurrence.
+
+        Daily tasks recur one day after today. Weekly tasks keep their weekday: the next
+        one is the first same-weekday slot after today, however late or early this one
+        was completed.
+        """
         self.completed = True
         step = RECURRENCE.get(self.frequency)
         if step is None:
             return None
-        now = now or datetime.now()
-        next_time = self.scheduled_time + step
-        while next_time <= now:  # a task finished late must not recur in the past
+        today = (now or datetime.now()).date()
+        anchor = (
+            datetime.combine(today, self.scheduled_time.time())
+            if self.frequency == "daily"
+            else self.scheduled_time
+        )
+        next_time = anchor + step
+        while next_time.date() <= today:
             next_time += step
         return replace(self, scheduled_time=next_time, completed=False)
 

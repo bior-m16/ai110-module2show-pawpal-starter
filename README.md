@@ -46,7 +46,7 @@ pip install -r requirements.txt
 
 The logic layer lives in `pawpal_system.py` and has four classes that mirror `diagrams/uml.mmd`:
 
-- **`Task`** is one care activity: title, the pet it belongs to, duration, priority (higher number is more urgent), scheduled start time, frequency (once, daily, weekly), and a completed flag. Completing a recurring task returns a copy on its next future occurrence, so a task finished late never recurs in the past.
+- **`Task`** is one care activity: title, the pet it belongs to, duration, priority (higher number is more urgent), scheduled start time, frequency (once, daily, weekly), and a completed flag. Completing a task creates the next occurrence: a daily task recurs one day after the completion date, and a weekly task keeps its weekday (the next same-weekday slot after today), so a task finished late or early never recurs in the past or drifts to another day.
 - **`Pet`** holds a pet's details and its own list of tasks. It adds and removes tasks, lists the pending ones, and completes a task, adding the next occurrence if it recurs.
 - **`Owner`** holds the owner's available minutes and a list of pets. `get_all_tasks()` returns every pet's tasks in one list, and `filter_tasks()` narrows that list by pet and/or completion status.
 - **`Scheduler`** is the planner. It holds no data of its own and reads everything through the owner's methods, so one plan covers all pets.
@@ -105,7 +105,7 @@ Filter: Luna's pending tasks
   Mon 18:00 Play session (Luna, pending)
 ```
 
-The tasks are added in reverse time order on purpose, so the "Sorted by time" view shows `sort_by_time()` at work, and the filters show `filter_tasks()` by pet, by status, and by both. The weekdays depend on the day you run it. A task completed after its time recurs on its next future occurrence, which is why the walk's next one is on Tuesday.
+The tasks are added in reverse time order on purpose, so the "Sorted by time" view shows `sort_by_time()` at work, and the filters show `filter_tasks()` by pet, by status, and by both. The weekdays depend on the day you run it. A completed daily task recurs one day after the completion date, which is why the walk's next one is on Tuesday.
 
 Add `--conflict` to include a task that overlaps two others. The scheduler warns about it when the task is added and flags it in the plan:
 
