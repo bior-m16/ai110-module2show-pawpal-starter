@@ -294,3 +294,171 @@ def test_conflicts_for_warns_before_a_task_is_added():
 
     assert Scheduler(owner).conflicts_for(vet) == [walk]
     assert Scheduler(owner).conflicts_for(make_task("later", 12)) == []
+
+
+# --- edge cases: sorting ----------------------------------------------------
+
+def test_sort_by_time_handles_an_empty_list():
+    assert Scheduler.sort_by_time([]) == []
+
+
+def test_sort_by_time_keeps_order_of_same_time_tasks_and_does_not_mutate():
+    first, second = make_task("first", 8), make_task("second", 8)
+    original = [second, first]
+
+    ordered = Scheduler.sort_by_time(original)
+
+    assert [t.title for t in ordered] == ["second", "first"]
+    assert ordered is not original
+
+
+def test_sort_by_time_orders_by_date_before_time_of_day():
+    tomorrow_early = Task("tomorrow", "Mochi", 10, 1, at(6, 0, date(2026, 10, 28)))
+
+    ordered = Scheduler.sort_by_time([tomorrow_early, make_task("today", 20)])
+
+    assert [t.title for t in ordered] == ["today", "tomorrow"]
+
+
+# --- edge cases: nothing to schedule ---------------------------------------
+
+def test_pet_with_no_tasks_is_handled_everywhere():
+    pet = Pet("Mochi", "dog")
+    owner = Owner("Jordan", 60, [pet])
+    scheduler = Scheduler(owner)
+
+    assert pet.get_pending_tasks() == []
+    assert owner.get_all_tasks() == []
+    assert scheduler.generate_plan(DAY) == []
+    assert scheduler.conflict_warnings() == []
+
+
+def test_owner_with_no_pets_and_filter_for_unknown_pet():
+    owner = Owner("Jordan", 60)
+    assert owner.get_all_tasks() == []
+    assert owner.filter_tasks(pet_name="Mochi") == []
+
+    owner.add_pet(Pet("Luna", "cat"))
+    assert owner.filter_tasks(pet_name="Mochi") == []
+
+
+# --- edge cases: planning budget and ties ----------------------------------
+
+def test_plan_with_zero_available_minutes_is_empty():
+    owner, mochi, _ = make_owner(available=0)
+    mochi.add_task(make_task("walk"))
+
+    assert Scheduler(owner).generate_plan(DAY) == []
+
+
+def test_plan_includes_a_task_that_exactly_fills_the_budget():
+    owner, mochi, _ = make_owner(available=30)
+    mochi.add_task(make_task("walk", minutes=30))
+
+    assert [t.title for t in Scheduler(owner).generate_plan(DAY)] == ["walk"]
+
+
+def test_task_longer_than_the_whole_budget_is_left_out_and_explained():
+    owner, mochi, _ = make_owner(available=20)
+    mochi.add_task(make_task("long", 8, minutes=60, priority=3))
+    mochi.add_task(make_task("short", 9, minutes=10, priority=1))
+    scheduler = Scheduler(owner)
+
+    plan = scheduler.generate_plan(DAY)
+
+    assert [t.title for t in plan] == ["short"]
+    assert "Left out: long" in scheduler.explain_plan(plan)
+
+
+def test_equal_priority_tasks_are_chosen_earliest_first():
+    owner, mochi, _ = make_owner(available=30)
+    mochi.add_task(make_task("later", 9, minutes=30, priority=2))
+    mochi.add_task(make_task("earlier", 8, minutes=30, priority=2))
+
+    assert [t.title for t in Scheduler(owner).generate_plan(DAY)] == ["earlier"]
+
+
+def test_explanation_does_not_list_other_days_as_left_out():
+    owner, mochi, _ = make_owner()
+    mochi.add_task(make_task("today", 8))
+    mochi.add_task(Task("tomorrow", "Mochi", 30, 3, at(8, 0, date(2026, 10, 28))))
+    scheduler = Scheduler(owner)
+
+    explanation = scheduler.explain_plan(scheduler.generate_plan(DAY))
+
+    assert "tomorrow" not in explanation
+
+
+# --- edge cases: exact same time and overlap shapes ------------------------
+
+def test_two_tasks_at_the_exact_same_time_are_both_planned_and_flagged():
+    owner, mochi, luna = make_owner()
+    mochi.add_task(make_task("walk", 8, 0, 30))
+    luna.add_task(make_task("feed", 8, 0, 10))
+    scheduler = Scheduler(owner)
+
+    plan = scheduler.generate_plan(DAY)
+
+    assert {t.title for t in plan} == {"walk", "feed"}
+    assert "Conflict:" in scheduler.explain_plan(plan)
+
+
+def test_conflict_across_midnight_is_detected():
+    owner, _, _ = make_owner()
+    late = Task("late", "Mochi", 60, 1, datetime(2026, 10, 27, 23, 30))
+    early = Task("early", "Mochi", 30, 1, datetime(2026, 10, 28, 0, 15))
+
+    assert Scheduler(owner).detect_conflicts([late, early]) == [(late, early)]
+
+
+def test_long_task_overlapping_two_short_ones_gives_exactly_two_pairs():
+    owner, _, _ = make_owner()
+    long_task = make_task("long", 8, 0, 120)
+    short_a = make_task("a", 8, 30, 15)
+    short_b = make_task("b", 9, 0, 30)  # starts after a ends, so a and b don't clash
+
+    conflicts = Scheduler(owner).detect_conflicts([short_b, long_task, short_a])
+
+    assert conflicts == [(long_task, short_a), (long_task, short_b)]
+
+
+def test_conflicts_for_ignores_completed_tasks():
+    owner, mochi, _ = make_owner()
+    done = make_task("done", 8, 0, 30)
+    mochi.add_task(done)
+    done.completed = True
+
+    assert Scheduler(owner).conflicts_for(make_task("new", 8, 15, 30)) == []
+
+
+# --- edge cases: recurring tasks and tagging --------------------------------
+
+def test_completing_an_already_completed_task_does_not_duplicate_it():
+    pet = Pet("Mochi", "dog")
+    walk = make_task(frequency="daily")
+    pet.add_task(walk)
+
+    pet.complete_task(walk, now=at(8))
+    pet.complete_task(walk, now=at(8))
+
+    assert len(pet.tasks) == 2
+
+
+def test_the_next_occurrence_can_itself_be_completed_and_recurs_again():
+    pet = Pet("Mochi", "dog")
+    walk = make_task(frequency="daily")
+    pet.add_task(walk)
+    pet.complete_task(walk, now=at(8))
+
+    pet.complete_task(pet.tasks[1], now=at(8, 0, date(2026, 10, 28)))
+
+    assert [t.scheduled_time.day for t in pet.tasks] == [27, 28, 29]
+
+
+def test_adding_a_task_tags_it_with_the_pets_name():
+    pet = Pet("Luna", "cat")
+    task = Task("Feed", "WrongName", 10, 2, at(8))
+
+    pet.add_task(task)
+
+    assert task.pet_name == "Luna"

@@ -54,9 +54,12 @@ class Task:
 
         Daily tasks recur one day after today. Weekly tasks keep their weekday: the next
         one is the first same-weekday slot after today, however late or early this one
-        was completed. A "once" task returns None. `now` defaults to the current time
-        and exists so the date can be fixed in tests.
+        was completed. A "once" task returns None, and so does a task that was already
+        completed, so completing it twice can't create duplicate occurrences. `now`
+        defaults to the current time and exists so the date can be fixed in tests.
         """
+        if self.completed:
+            return None
         self.completed = True
         next_time = self._next_time((now or datetime.now()).date())
         if next_time is None:

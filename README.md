@@ -137,51 +137,48 @@ Conflict: Morning walk (Mochi, 07:30-08:00) overlaps Vet video call (Luna, 07:45
 
 ## 🧪 Testing PawPal+
 
-```bash
-# Run the full test suite:
-pytest
+Run the test suite from the project folder:
 
-# Show each test by name:
-pytest -v
+```bash
+python -m pytest
 ```
 
-Sample test output (`pytest -v`):
+Add `-v` to list every test by name.
+
+### What the tests cover
+
+The 45 tests in `tests/test_pawpal.py` check the logic layer (`pawpal_system.py`), covering the normal cases and the edge cases:
+
+- **Sorting:** tasks come back in time order, including tasks on different days, an empty list, and tasks at the same time (original order kept, original list unchanged).
+- **Recurring tasks:** a daily task creates the next one for the following day; a weekly task keeps its weekday whether it is completed on time, late, or early; month and year rollover works; a one-time task creates nothing; completing a task twice does not create duplicates.
+- **Conflict detection:** overlapping tasks are flagged as warnings, including tasks at the exact same time (same pet or different pets), overlaps across midnight, and one long task overlapping two short ones. Back-to-back tasks, completed tasks, and tasks on other days are not flagged.
+- **Filtering:** by pet, by completion status, and by both; an unknown pet returns an empty list.
+- **Planning:** the plan combines every pet's tasks for one day, picks by priority within the available minutes, breaks ties by earliest time, leaves out what doesn't fit and explains why.
+- **Empty cases:** a pet with no tasks, an owner with no pets, and zero available minutes do not crash.
+
+### Sample test output
 
 ```
 ============================= test session starts =============================
-collected 28 items
+platform win32 -- Python 3.14.4, pytest-9.1.1, pluggy-1.7.0
+rootdir: C:\Users\biora\ai110-module2show-pawpal-starter
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.15.1
+collected 45 items
 
-tests/test_pawpal.py::test_mark_complete_changes_task_status PASSED      [  3%]
-tests/test_pawpal.py::test_adding_task_increases_pet_task_count PASSED   [  7%]
-tests/test_pawpal.py::test_sort_by_time_orders_earliest_first PASSED     [ 10%]
-tests/test_pawpal.py::test_filter_tasks_by_pet_and_status PASSED         [ 14%]
-tests/test_pawpal.py::test_once_task_has_no_next_occurrence PASSED       [ 17%]
-tests/test_pawpal.py::test_daily_task_recurs_next_day PASSED             [ 21%]
-tests/test_pawpal.py::test_weekly_task_recurs_next_week PASSED           [ 25%]
-tests/test_pawpal.py::test_weekly_task_completed_late_keeps_its_weekday PASSED [ 28%]
-tests/test_pawpal.py::test_weekly_task_many_weeks_late_lands_on_the_next_same_weekday PASSED [ 32%]
-tests/test_pawpal.py::test_weekly_task_completed_early_waits_for_next_weeks_slot PASSED [ 35%]
-tests/test_pawpal.py::test_next_occurrence_is_one_period_after_the_completion_date PASSED [ 39%]
-tests/test_pawpal.py::test_early_completion_is_also_counted_from_today PASSED [ 42%]
-tests/test_pawpal.py::test_recurrence_crosses_month_and_year_boundaries PASSED [ 46%]
-tests/test_pawpal.py::test_next_occurrence_is_a_new_task_and_keeps_the_details PASSED [ 50%]
-tests/test_pawpal.py::test_pet_complete_task_adds_next_occurrence PASSED [ 53%]
-tests/test_pawpal.py::test_complete_task_rejects_task_from_another_pet PASSED [ 57%]
-tests/test_pawpal.py::test_plan_includes_tasks_from_every_pet_in_time_order PASSED [ 60%]
-tests/test_pawpal.py::test_plan_only_includes_the_requested_day PASSED   [ 64%]
-tests/test_pawpal.py::test_plan_drops_lowest_priority_task_that_does_not_fit PASSED [ 67%]
-tests/test_pawpal.py::test_plan_skips_completed_tasks PASSED             [ 71%]
-tests/test_pawpal.py::test_empty_owner_has_empty_plan_and_explanation PASSED [ 75%]
-tests/test_pawpal.py::test_detect_conflicts_finds_overlapping_pair PASSED [ 78%]
-tests/test_pawpal.py::test_back_to_back_tasks_do_not_conflict PASSED     [ 82%]
-tests/test_pawpal.py::test_warning_for_two_tasks_at_the_same_time_for_the_same_pet PASSED [ 85%]
-tests/test_pawpal.py::test_warning_for_two_tasks_at_the_same_time_for_different_pets PASSED [ 89%]
-tests/test_pawpal.py::test_no_warnings_when_nothing_overlaps_or_nothing_exists PASSED [ 92%]
-tests/test_pawpal.py::test_warnings_ignore_completed_tasks_and_other_days PASSED [ 96%]
-tests/test_pawpal.py::test_conflicts_for_warns_before_a_task_is_added PASSED [100%]
+tests\test_pawpal.py .............................................       [100%]
 
-============================= 28 passed in 0.06s ==============================
+============================= 45 passed in 0.06s ==============================
 ```
+
+### Confidence level: ★★★★☆ (4 out of 5)
+
+I'm fairly confident the scheduling logic is reliable: all 45 tests pass, and they cover the main behaviors and the edge cases that were most likely to break, including one real bug the tests found (duplicate recurring tasks). I stopped short of five stars because:
+
+- The Streamlit UI is not covered by pytest; I only checked it by clicking through the app.
+- Some inputs are not tested, such as zero-length tasks, leap-day weekly tasks, and time zones.
+- The planner is greedy: it picks by priority and flags overlaps but never moves tasks, so it is not guaranteed to find the best possible plan.
 
 ## 📐 Smarter Scheduling
 

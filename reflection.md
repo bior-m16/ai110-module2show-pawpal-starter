@@ -100,14 +100,14 @@ I also changed one of its results later. I had asked for a recurring task's next
 - What behaviors did you test?
 - Why were these tests important?
 
-I wrote two pytest tests: completing a task changes its status, and adding a task to a pet increases its task count. They cover the basic building blocks the scheduler depends on. I also ran `main.py`, with and without an overlapping task, to see the plan, the left-out task, and the conflict lines.
+I wrote 45 pytest tests covering sorting, recurring tasks, filtering, conflict detection, and planning, including edge cases such as a pet with no tasks, two tasks at the exact same time, an overlap across midnight, and a weekly task completed late. These matter because the scheduler is built on small rules that are easy to break quietly, like which day a recurring task lands on. I also ran `main.py`, with and without an overlapping task, to see the plan, the left-out task, and the conflict lines.
 
 **b. Confidence**
 
 - How confident are you that your scheduler works correctly?
 - What edge cases would you test next if you had more time?
 
-I'm fairly confident in the basics, but only moderately confident in the scheduler, because pytest doesn't cover it yet and I've only checked it by running one scenario. Next I would test recurring tasks (daily and weekly), a pet with no tasks, an owner with no pets, tasks that don't fit the available time, tasks that touch end-to-start without overlapping, and equal priorities.
+I'm fairly confident, about 4 out of 5: all 45 tests pass, and they found one real bug (completing a recurring task twice created a duplicate). I'm not at 5 because the Streamlit UI isn't covered by pytest and I only checked it by clicking through it. Next I would test zero-length tasks, leap-day weekly tasks, and add automated tests for the UI.
 
 ---
 
