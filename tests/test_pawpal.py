@@ -241,6 +241,51 @@ def test_back_to_back_tasks_do_not_conflict():
     assert Scheduler(owner).detect_conflicts([first, second]) == []
 
 
+def test_warning_for_two_tasks_at_the_same_time_for_the_same_pet():
+    owner, mochi, _ = make_owner()
+    mochi.add_task(make_task("Grooming", 15, 0, 45))
+    mochi.add_task(make_task("Vet checkup", 15, 0, 30))
+
+    warnings = Scheduler(owner).conflict_warnings()
+
+    assert len(warnings) == 1
+    assert warnings[0].startswith("Warning:")
+    assert "Grooming" in warnings[0] and "Vet checkup" in warnings[0]
+    assert "[same pet]" in warnings[0]
+
+
+def test_warning_for_two_tasks_at_the_same_time_for_different_pets():
+    owner, mochi, luna = make_owner()
+    mochi.add_task(make_task("Training", 18, 0, 30))
+    luna.add_task(make_task("Play", 18, 0, 20))
+
+    warnings = Scheduler(owner).conflict_warnings()
+
+    assert len(warnings) == 1
+    assert "[different pets]" in warnings[0]
+
+
+def test_no_warnings_when_nothing_overlaps_or_nothing_exists():
+    owner, mochi, _ = make_owner()
+    scheduler = Scheduler(owner)
+    assert scheduler.conflict_warnings() == []  # no tasks at all, must not raise
+
+    mochi.add_task(make_task("a", 8, 0, 30))
+    mochi.add_task(make_task("b", 8, 30, 30))  # back to back
+    assert scheduler.conflict_warnings() == []
+
+
+def test_warnings_ignore_completed_tasks_and_other_days():
+    owner, mochi, _ = make_owner()
+    done = make_task("done", 9, 0, 30)
+    mochi.add_task(done)
+    done.completed = True
+    mochi.add_task(make_task("live", 9, 0, 30))
+    mochi.add_task(Task("tomorrow", "Mochi", 30, 3, at(9, 0, date(2026, 10, 28))))
+
+    assert Scheduler(owner).conflict_warnings() == []
+
+
 def test_conflicts_for_warns_before_a_task_is_added():
     owner, mochi, _ = make_owner()
     walk = make_task("walk", 7, 30, 30)

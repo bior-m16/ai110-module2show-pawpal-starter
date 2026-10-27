@@ -27,6 +27,16 @@ def _overlaps(first: Task, second: Task) -> bool:
     return first.scheduled_time < _end_time(second) and second.scheduled_time < _end_time(first)
 
 
+def _describe_conflict(first: Task, second: Task) -> str:
+    """Return a one-line description of two overlapping tasks, noting if they share a pet."""
+    scope = "same pet" if first.pet_name == second.pet_name else "different pets"
+    return (
+        f"{first.title} ({first.pet_name}, {first.scheduled_time:%H:%M}-{_end_time(first):%H:%M}) "
+        f"overlaps {second.title} ({second.pet_name}, "
+        f"{second.scheduled_time:%H:%M}-{_end_time(second):%H:%M}) [{scope}]"
+    )
+
+
 @dataclass
 class Task:
     """One care activity for a single pet."""
@@ -44,22 +54,33 @@ class Task:
 
         Daily tasks recur one day after today. Weekly tasks keep their weekday: the next
         one is the first same-weekday slot after today, however late or early this one
-        was completed.
+        was completed. A "once" task returns None. `now` defaults to the current time
+        and exists so the date can be fixed in tests.
         """
         self.completed = True
+        next_time = self._next_time((now or datetime.now()).date())
+        if next_time is None:
+            return None
+        return replace(self, scheduled_time=next_time, completed=False)
+
+    def _next_time(self, today: date) -> Optional[datetime]:
+        """Return when this task next recurs after the given day, or None if it doesn't.
+
+        Daily tasks start counting from `today` at the task's time of day. Weekly tasks
+        start from the original date and step forward a week at a time until the date is
+        after `today`, which keeps them on the same weekday.
+        """
         step = RECURRENCE.get(self.frequency)
         if step is None:
             return None
-        today = (now or datetime.now()).date()
-        anchor = (
-            datetime.combine(today, self.scheduled_time.time())
-            if self.frequency == "daily"
-            else self.scheduled_time
-        )
+        if self.frequency == "daily":
+            anchor = datetime.combine(today, self.scheduled_time.time())
+        else:
+            anchor = self.scheduled_time  # weekly keeps its original weekday
         next_time = anchor + step
         while next_time.date() <= today:
             next_time += step
-        return replace(self, scheduled_time=next_time, completed=False)
+        return next_time
 
 
 @dataclass
@@ -86,7 +107,10 @@ class Pet:
         return [t for t in self.tasks if not t.completed]
 
     def complete_task(self, task: Task, now: Optional[datetime] = None) -> None:
-        """Mark a task done and add its next occurrence to this pet if it recurs."""
+        """Mark a task done and add its next occurrence to this pet if it recurs.
+
+        Raises ValueError if the task doesn't belong to this pet.
+        """
         if task not in self.tasks:
             raise ValueError(f"{task.title!r} does not belong to {self.name}")
         next_task = task.mark_complete(now)
@@ -119,7 +143,11 @@ class Owner:
     def filter_tasks(
         self, pet_name: Optional[str] = None, completed: Optional[bool] = None
     ) -> list[Task]:
-        """Return tasks across all pets, optionally only one pet's and/or one status."""
+        """Return tasks across all pets, optionally only one pet's and/or one status.
+
+        `pet_name=None` means every pet and `completed=None` means both statuses, so
+        passing neither is the same as get_all_tasks(). Both given means both must match.
+        """
         return [
             task
             for task in self.get_all_tasks()
@@ -137,8 +165,19 @@ class Scheduler:
 
     @staticmethod
     def sort_by_time(tasks: list[Task]) -> list[Task]:
-        """Return the tasks ordered by scheduled start time, earliest first."""
+        """Return a new list of the tasks ordered by scheduled start time, earliest first.
+
+        The original list is left unchanged, and tasks with the same time keep their
+        existing relative order.
+        """
         return sorted(tasks, key=lambda t: t.scheduled_time)
+
+    def _pending_on(self, day: date) -> list[Task]:
+        """Return the owner's pending tasks, across all pets, that start on the given day."""
+        return [
+            t for t in self.owner.filter_tasks(completed=False)
+            if t.scheduled_time.date() == day
+        ]
 
     def generate_plan(self, day: Optional[date] = None) -> list[Task]:
         """Pick one day's pending tasks across all pets by priority until time runs out.
@@ -147,11 +186,7 @@ class Scheduler:
         task that doesn't fit is skipped so a shorter one can still use the remaining
         minutes. The chosen tasks come back in chronological order.
         """
-        day = day or date.today()
-        pending = [
-            t for t in self.owner.filter_tasks(completed=False)
-            if t.scheduled_time.date() == day
-        ]
+        pending = self._pending_on(day or date.today())
         by_importance = sorted(pending, key=lambda t: (-t.priority, t.scheduled_time))
 
         chosen: list[Task] = []
@@ -163,18 +198,40 @@ class Scheduler:
         return self.sort_by_time(chosen)
 
     def detect_conflicts(self, tasks: list[Task]) -> list[tuple[Task, Task]]:
-        """Return pairs of the given tasks whose scheduled times overlap."""
+        """Return pairs of the given tasks whose scheduled times overlap.
+
+        Tasks are sorted by start time and each one is compared only with the tasks that
+        start before it ends, so this is O(n log n) plus the number of conflicts. Tasks
+        that run back to back (one ends exactly when the next starts) do not conflict.
+        """
         ordered = self.sort_by_time(tasks)
         conflicts: list[tuple[Task, Task]] = []
         for i, first in enumerate(ordered):
             for second in ordered[i + 1:]:
-                if second.scheduled_time >= _end_time(first):
-                    break
+                if not _overlaps(first, second):
+                    break  # sorted by start, so no later task can overlap `first` either
                 conflicts.append((first, second))
         return conflicts
 
+    def conflict_warnings(self, tasks: Optional[list[Task]] = None) -> list[str]:
+        """Return a warning message for every overlapping pair; never raises, empty if none.
+
+        Checks the owner's pending tasks unless a list is given. Overlaps are found for
+        the same pet or different pets, since the owner can't do two things at once.
+        """
+        if tasks is None:
+            tasks = self.owner.filter_tasks(completed=False)
+        return [
+            f"Warning: {_describe_conflict(first, second)}"
+            for first, second in self.detect_conflicts(tasks)
+        ]
+
     def conflicts_for(self, task: Task) -> list[Task]:
-        """Return the owner's pending tasks that a new task would overlap, so it can be warned about."""
+        """Return the owner's pending tasks that the given task overlaps.
+
+        Meant for checking a task before it is added, so the owner can be warned. The
+        task itself is never counted as its own conflict.
+        """
         return [
             existing
             for existing in self.owner.filter_tasks(completed=False)
@@ -199,11 +256,11 @@ class Scheduler:
             "Tasks were chosen by priority, then earliest time, and listed in time order."
         )
 
-        day = plan[0].scheduled_time.date()
+        # Compare by identity: two tasks with identical fields are equal as dataclasses.
         planned_ids = {id(t) for t in plan}
         left_out = [
-            t for t in self.owner.filter_tasks(completed=False)
-            if t.scheduled_time.date() == day and id(t) not in planned_ids
+            t for t in self._pending_on(plan[0].scheduled_time.date())
+            if id(t) not in planned_ids
         ]
         for task in left_out:
             lines.append(
@@ -212,8 +269,5 @@ class Scheduler:
             )
 
         for first, second in self.detect_conflicts(plan):
-            lines.append(
-                f"Conflict: {first.title} ({first.pet_name}) overlaps "
-                f"{second.title} ({second.pet_name})."
-            )
+            lines.append(f"Conflict: {_describe_conflict(first, second)}")
         return "\n".join(lines)

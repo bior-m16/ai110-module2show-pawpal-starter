@@ -34,6 +34,7 @@ After the first implementation I reviewed `main.py` and the logic it calls, and 
 - **Fixed a bug where tomorrow's recurring task appeared in today's plan.** `generate_plan()` now takes a day (today by default) and only plans tasks on that day.
 - **Fixed recurrence for late completion.** A daily task now recurs one day after the completion date, so it can't land in the past. A weekly task keeps its weekday: the next one is the first same-weekday slot after today, so a Tuesday task finished on Thursday still recurs on a Tuesday.
 - **Added `Scheduler.sort_by_time()` and `Owner.filter_tasks()`** so sorting and filtering by pet and status are reusable instead of being done by hand in each place.
+- **Added `Scheduler.conflict_warnings()`**, which returns a plain warning message for every pair of overlapping tasks (same pet or different pets) instead of raising an error, so the program keeps running and the UI can just display the messages.
 - **Added `Scheduler.conflicts_for(task)`** so the UI can warn about an overlap when a task is added, not only after the plan is built.
 
 Issues I noticed during that review and how I settled them when implementing the classes:
@@ -58,7 +59,9 @@ The scheduler considers the owner's available minutes, each task's priority, and
 - Describe one tradeoff your scheduler makes.
 - Why is that tradeoff reasonable for this scenario?
 
-The scheduler picks tasks greedily by priority and never moves a task; it only flags overlaps. That can leave out a low-priority task that a different combination would have fit, and it leaves conflicts for the owner to resolve. This is reasonable here because the owner chose those times, the logic stays simple to explain, and a pet care day has few tasks.
+The scheduler fills the owner's available minutes greedily by priority, but it only budgets total minutes; it doesn't check that the chosen tasks fit on the clock. Two tasks can overlap in time and both end up in the plan, and the scheduler flags the overlap with a warning instead of moving or dropping a task. The greedy pick can also leave out a low-priority task that a different combination would have fit.
+
+This is reasonable here because the owner picked those times, and moving a task automatically could put a medication at a time they never chose. The rules are also easy to explain ("highest priority first until time runs out"), and a pet care day has few tasks, so an overlap is quick for the owner to fix once they see the warning.
 
 ---
 

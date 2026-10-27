@@ -92,14 +92,8 @@ else:
                 scheduled_time=datetime.combine(date.today(), start_time),
                 frequency=frequency,
             )
-            clashes = Scheduler(owner).conflicts_for(new_task)
             pet.add_task(new_task)
             st.success(f"Added '{new_task.title}' for {pet.name}.")
-            for clash in clashes:
-                st.warning(
-                    f"'{new_task.title}' overlaps '{clash.title}' ({clash.pet_name}) "
-                    f"at {clash.scheduled_time:%H:%M}."
-                )
 
 if owner.get_all_tasks():
     st.write("All tasks:")
@@ -131,6 +125,10 @@ if owner.get_all_tasks():
     else:
         st.info("No tasks match that filter.")
 
+    # Standing conflict list: stays visible until the overlap is fixed.
+    for warning in Scheduler(owner).conflict_warnings():
+        st.warning(warning)
+
 st.divider()
 
 st.subheader("Build Schedule")
@@ -152,9 +150,7 @@ if st.button("Generate schedule"):
                 for t in plan
             ]
         )
-        for first, second in scheduler.detect_conflicts(plan):
-            st.warning(
-                f"{first.title} ({first.pet_name}) overlaps {second.title} ({second.pet_name})."
-            )
+        for warning in scheduler.conflict_warnings(plan):
+            st.warning(warning)
         with st.expander("Why this plan?", expanded=True):
             st.text(scheduler.explain_plan(plan))

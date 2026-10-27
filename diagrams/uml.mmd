@@ -37,6 +37,7 @@ classDiagram
         +sort_by_time(tasks) list~Task~
         +generate_plan(day) list~Task~
         +detect_conflicts(tasks) list~tuple~
+        +conflict_warnings(tasks) list~str~
         +conflicts_for(task) list~Task~
         +explain_plan(plan) str
     }

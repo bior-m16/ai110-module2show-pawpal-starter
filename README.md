@@ -57,7 +57,7 @@ How they work together: an `Owner` has many `Pet`s, and each `Pet` has many `Tas
 
 ## 🖥️ Sample Output
 
-Run the terminal demo with two pets (Mochi and Luna), 90 available minutes, and four tasks:
+Run the terminal demo with two pets (Mochi and Luna), 90 available minutes, and four tasks that are added in reverse time order:
 
 ```bash
 python main.py
@@ -73,41 +73,48 @@ Total 60 of 90 available minutes. Tasks were chosen by priority, then earliest t
 Left out: Grooming (Mochi, 45 min) did not fit in the remaining time.
 
 Tasks in the order they were added (grouped by pet):
-  Mon 15:00 Grooming (Mochi, pending)
-  Mon 07:30 Morning walk (Mochi, pending)
-  Mon 18:00 Play session (Luna, pending)
-  Mon 08:00 Breakfast and medication (Luna, pending)
+  Tue 15:00 Grooming (Mochi, pending)
+  Tue 07:30 Morning walk (Mochi, pending)
+  Tue 18:00 Play session (Luna, pending)
+  Tue 08:00 Breakfast and medication (Luna, pending)
 
 Sorted by time:
-  Mon 07:30 Morning walk (Mochi, pending)
-  Mon 08:00 Breakfast and medication (Luna, pending)
-  Mon 15:00 Grooming (Mochi, pending)
-  Mon 18:00 Play session (Luna, pending)
+  Tue 07:30 Morning walk (Mochi, pending)
+  Tue 08:00 Breakfast and medication (Luna, pending)
+  Tue 15:00 Grooming (Mochi, pending)
+  Tue 18:00 Play session (Luna, pending)
 
 Completed 'Morning walk'; its next occurrence was added.
 
 Filter: Mochi's tasks
-  Mon 07:30 Morning walk (Mochi, done)
-  Mon 15:00 Grooming (Mochi, pending)
-  Tue 07:30 Morning walk (Mochi, pending)
+  Tue 07:30 Morning walk (Mochi, done)
+  Tue 15:00 Grooming (Mochi, pending)
+  Wed 07:30 Morning walk (Mochi, pending)
 
 Filter: pending tasks
-  Mon 08:00 Breakfast and medication (Luna, pending)
-  Mon 15:00 Grooming (Mochi, pending)
-  Mon 18:00 Play session (Luna, pending)
-  Tue 07:30 Morning walk (Mochi, pending)
+  Tue 08:00 Breakfast and medication (Luna, pending)
+  Tue 15:00 Grooming (Mochi, pending)
+  Tue 18:00 Play session (Luna, pending)
+  Wed 07:30 Morning walk (Mochi, pending)
 
 Filter: done tasks
-  Mon 07:30 Morning walk (Mochi, done)
+  Tue 07:30 Morning walk (Mochi, done)
 
 Filter: Luna's pending tasks
-  Mon 08:00 Breakfast and medication (Luna, pending)
-  Mon 18:00 Play session (Luna, pending)
+  Tue 08:00 Breakfast and medication (Luna, pending)
+  Tue 18:00 Play session (Luna, pending)
+
+Conflict check: no tasks yet
+  no conflicts
+
+Conflict check: two pairs of tasks at the same time
+  Warning: Grooming (Mochi, 15:00-15:45) overlaps Vet checkup (Mochi, 15:00-15:30) [same pet]
+  Warning: Training class (Mochi, 18:00-18:30) overlaps Play session (Luna, 18:00-18:20) [different pets]
 ```
 
-The tasks are added in reverse time order on purpose, so the "Sorted by time" view shows `sort_by_time()` at work, and the filters show `filter_tasks()` by pet, by status, and by both. The weekdays depend on the day you run it. A completed daily task recurs one day after the completion date, which is why the walk's next one is on Tuesday.
+The demo shows `sort_by_time()` (tasks added out of order come back in time order), `filter_tasks()` by pet and by status, and a recurring task: completing the daily walk adds the next one. The last section shows conflict warnings for two tasks scheduled at the same time, once for the same pet (Grooming and Vet checkup, both Mochi) and once for different pets (Training class for Mochi and Play session for Luna). The scheduler returns these as warning messages and the program keeps running. The weekdays depend on the day you run it.
 
-Add `--conflict` to include a task that overlaps two others. The scheduler warns about it when the task is added and flags it in the plan:
+Add `--conflict` to include a task that overlaps two others. The scheduler warns about it when the task is added and flags it in the plan (the rest of the output matches the run above):
 
 ```bash
 python main.py --conflict
@@ -124,44 +131,8 @@ Today's Schedule for Jordan (90 min available)
 18:00 - Play session (Luna, 20 min, priority 2)
 Total 80 of 90 available minutes. Tasks were chosen by priority, then earliest time, and listed in time order.
 Left out: Grooming (Mochi, 45 min) did not fit in the remaining time.
-Conflict: Morning walk (Mochi) overlaps Vet video call (Luna).
-Conflict: Vet video call (Luna) overlaps Breakfast and medication (Luna).
-
-Tasks in the order they were added (grouped by pet):
-  Mon 15:00 Grooming (Mochi, pending)
-  Mon 07:30 Morning walk (Mochi, pending)
-  Mon 18:00 Play session (Luna, pending)
-  Mon 08:00 Breakfast and medication (Luna, pending)
-  Mon 07:45 Vet video call (Luna, pending)
-
-Sorted by time:
-  Mon 07:30 Morning walk (Mochi, pending)
-  Mon 07:45 Vet video call (Luna, pending)
-  Mon 08:00 Breakfast and medication (Luna, pending)
-  Mon 15:00 Grooming (Mochi, pending)
-  Mon 18:00 Play session (Luna, pending)
-
-Completed 'Morning walk'; its next occurrence was added.
-
-Filter: Mochi's tasks
-  Mon 07:30 Morning walk (Mochi, done)
-  Mon 15:00 Grooming (Mochi, pending)
-  Tue 07:30 Morning walk (Mochi, pending)
-
-Filter: pending tasks
-  Mon 07:45 Vet video call (Luna, pending)
-  Mon 08:00 Breakfast and medication (Luna, pending)
-  Mon 15:00 Grooming (Mochi, pending)
-  Mon 18:00 Play session (Luna, pending)
-  Tue 07:30 Morning walk (Mochi, pending)
-
-Filter: done tasks
-  Mon 07:30 Morning walk (Mochi, done)
-
-Filter: Luna's pending tasks
-  Mon 07:45 Vet video call (Luna, pending)
-  Mon 08:00 Breakfast and medication (Luna, pending)
-  Mon 18:00 Play session (Luna, pending)
+Conflict: Morning walk (Mochi, 07:30-08:00) overlaps Vet video call (Luna, 07:45-08:05) [different pets]
+...
 ```
 
 ## 🧪 Testing PawPal+
@@ -182,14 +153,40 @@ Sample test output:
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
-
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Sorting | `Scheduler.sort_by_time()` | Orders any list of tasks by start time; returns a new list |
+| Filtering | `Owner.filter_tasks()` | By pet name, completion status, or both, across all pets |
+| Conflict detection | `Scheduler.detect_conflicts()`, `conflict_warnings()`, `conflicts_for()` | Finds overlapping tasks and reports them as warnings, never errors |
+| Recurring tasks | `Task.mark_complete()`, `Pet.complete_task()` | Daily and weekly tasks create their next occurrence when completed |
+
+### Sorting
+
+`Scheduler.sort_by_time(tasks)` returns the tasks ordered by `scheduled_time`, earliest first. It uses `sorted()` with a lambda key, so the original list is unchanged and tasks with the same time keep their relative order. The UI's task table and the "Sorted by time" view in `main.py` both use it, and `generate_plan()` uses it to return the final plan in time order.
+
+### Filtering
+
+`Owner.filter_tasks(pet_name=None, completed=None)` returns tasks across all of the owner's pets. Pass `pet_name` to keep one pet's tasks, `completed=False` for pending tasks, `completed=True` for finished ones, or both to combine them. Leaving an argument as `None` means "don't filter on this". `Scheduler.generate_plan()` calls it with `completed=False`, so the planner reads every pet's tasks through the owner and then keeps only the requested day's.
+
+### Conflict detection
+
+Two tasks conflict when their time ranges (start time to start time plus duration) overlap. A task that ends exactly when the next one starts does not conflict. Conflicts are found for the same pet or for different pets, since the owner can only do one thing at a time.
+
+- `Scheduler.detect_conflicts(tasks)` sorts the tasks by start time and compares each one only with the tasks that start before it ends, so it costs O(n log n) plus the number of conflicts. It returns the overlapping pairs.
+- `Scheduler.conflict_warnings(tasks=None)` turns those pairs into plain warning strings such as `Warning: Grooming (Mochi, 15:00-15:45) overlaps Vet checkup (Mochi, 15:00-15:30) [same pet]`. It checks the owner's pending tasks by default and returns an empty list when there are no conflicts, so it never crashes the program. The UI shows these warnings under the task table.
+- `Scheduler.conflicts_for(task)` returns the pending tasks a single task overlaps, for checking a task before it is added.
+
+The scheduler only flags conflicts. It never moves or drops a task to resolve one.
+
+### Recurring tasks
+
+When a daily or weekly task is completed, a new `Task` is created for its next occurrence and added to the same pet:
+
+- `Task.mark_complete(now=None)` marks the task done and returns the next occurrence, or `None` for a one-time task. The date logic lives in the private `Task._next_time()`.
+- `Pet.complete_task(task)` calls it and adds the new task to the pet's list.
+- **Daily** tasks recur one day after the completion date, at the same time of day.
+- **Weekly** tasks keep their weekday: the next one is the first slot on the same weekday after today, however late or early the task was completed. A Tuesday task finished on Thursday still recurs on a Tuesday.
+- **Once** tasks do not recur.
 
 ## 📸 Demo Walkthrough
 

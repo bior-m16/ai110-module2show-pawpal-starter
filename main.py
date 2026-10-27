@@ -23,6 +23,29 @@ def show(heading: str, tasks: list[Task]) -> None:
         print(f"  {task.scheduled_time:%a %H:%M} {task.title} ({task.pet_name}, {status})")
 
 
+def demo_same_time_warnings() -> None:
+    """Show conflict warnings for two tasks at the same time, same pet and different pets."""
+    owner = Owner(name="Jordan", available_minutes=120)
+    mochi = Pet(name="Mochi", species="dog")
+    luna = Pet(name="Luna", species="cat")
+    owner.add_pet(mochi)
+    owner.add_pet(luna)
+    scheduler = Scheduler(owner)
+
+    print("\nConflict check: no tasks yet")
+    print(f"  {scheduler.conflict_warnings() or 'no conflicts'}")
+
+    mochi.add_task(Task("Grooming", "", 45, 1, at(15, 0)))
+    mochi.add_task(Task("Vet checkup", "", 30, 3, at(15, 0)))  # same pet, same time
+    mochi.add_task(Task("Training class", "", 30, 2, at(18, 0)))
+    luna.add_task(Task("Play session", "", 20, 2, at(18, 0)))  # different pet, same time
+    luna.add_task(Task("Breakfast", "", 10, 3, at(8, 0)))  # no clash
+
+    print("\nConflict check: two pairs of tasks at the same time")
+    for warning in scheduler.conflict_warnings():
+        print(f"  {warning}")
+
+
 def main() -> None:
     owner = Owner(name="Jordan", available_minutes=90)
 
@@ -65,6 +88,8 @@ def main() -> None:
         "Filter: Luna's pending tasks",
         scheduler.sort_by_time(owner.filter_tasks(pet_name="Luna", completed=False)),
     )
+
+    demo_same_time_warnings()
 
 
 if __name__ == "__main__":
