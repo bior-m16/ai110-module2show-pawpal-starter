@@ -67,7 +67,7 @@ The most helpful prompts asked it to brainstorm before executing, and to review 
 - Describe one moment where you did not accept an AI suggestion as-is.
 - How did you evaluate or verify what the AI suggested?
 
-I accepted most of its design suggestions after reading them: adding `pet_name` to `Task`, the three skeleton fixes, and the `scheduled_time` rename. I did not take everything as written. I asked it to brainstorm and agree on the classes before it touched my files, and I held off on committing and pushing until I had checked its work.
+I accepted its design suggestions after reading them: adding `pet_name` to `Task`, the three skeleton fixes, and the `scheduled_time` rename. I did not reject any of them, but I revised the design before implementing it. I asked it to brainstorm and agree on the classes before it touched my files, reviewed the skeleton for missing relationships, and made those changes first, so the implementation started from a design I had already checked.
 
 Two of its outputs needed correcting after I checked them. First, it wrote a nested generic return type for `detect_conflicts()` in the UML. When I pasted the diagram into the Mermaid Live Editor it rendered wrongly as `list<tuple>Task,Task<>`, so the type was simplified to `list~tuple~`. Second, its first tests passed with `python -m pytest` but the plain `pytest` command in my README failed to import `pawpal_system`, so a `pytest.ini` was added to fix that.
 
