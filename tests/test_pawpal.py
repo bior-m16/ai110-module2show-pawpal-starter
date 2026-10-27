@@ -1,8 +1,8 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
-from pawpal_system import Owner, Pet, Scheduler, Task
+from pawpal_system import Owner, Pet, Priority, Scheduler, Task
 
 DAY = date(2026, 10, 27)
 
@@ -296,6 +296,60 @@ def test_conflicts_for_warns_before_a_task_is_added():
     assert Scheduler(owner).conflicts_for(make_task("later", 12)) == []
 
 
+# --- removing and editing tasks ---------------------------------------------
+
+def test_remove_task_takes_it_off_the_pet_and_the_owner_view():
+    owner, mochi, _ = make_owner()
+    walk, feed = make_task("walk"), make_task("feed", 9)
+    mochi.add_task(walk)
+    mochi.add_task(feed)
+
+    mochi.remove_task(walk)
+
+    assert mochi.tasks == [feed]
+    assert owner.get_all_tasks() == [feed]
+
+
+def test_remove_task_that_is_not_there_raises():
+    _, mochi, luna = make_owner()
+    walk = make_task("walk")
+    mochi.add_task(walk)
+
+    with pytest.raises(ValueError):
+        luna.remove_task(walk)
+
+
+def test_removing_or_retiming_a_task_clears_its_conflict():
+    owner, mochi, luna = make_owner()
+    walk, vet = make_task("walk", 8, 0, 30), make_task("vet", 8, 15, 20)
+    mochi.add_task(walk)
+    luna.add_task(vet)
+    scheduler = Scheduler(owner)
+    assert len(scheduler.conflict_warnings()) == 1
+
+    vet.scheduled_time = at(10, 0)  # edit the start time
+    assert scheduler.conflict_warnings() == []
+
+    vet.scheduled_time = at(8, 15)  # overlap again, then remove it instead
+    assert len(scheduler.conflict_warnings()) == 1
+    luna.remove_task(vet)
+    assert scheduler.conflict_warnings() == []
+
+
+def test_moving_a_task_to_another_day_clears_its_conflict_and_leaves_todays_plan():
+    owner, mochi, luna = make_owner()
+    walk, vet = make_task("walk", 8, 0, 30), make_task("vet", 8, 15, 20)
+    mochi.add_task(walk)
+    luna.add_task(vet)
+    scheduler = Scheduler(owner)
+
+    vet.scheduled_time = at(8, 15, date(2026, 10, 28))  # move to the next day, same time
+
+    assert scheduler.conflict_warnings() == []
+    assert [t.title for t in scheduler.generate_plan(DAY)] == ["walk"]
+    assert [t.title for t in scheduler.generate_plan(date(2026, 10, 28))] == ["vet"]
+
+
 # --- edge cases: sorting ----------------------------------------------------
 
 def test_sort_by_time_handles_an_empty_list():
@@ -462,3 +516,211 @@ def test_adding_a_task_tags_it_with_the_pets_name():
     pet.add_task(task)
 
     assert task.pet_name == "Luna"
+
+
+# --- challenge: next available slot ----------------------------------------
+
+def test_free_slot_on_an_empty_day_is_the_start_of_the_day():
+    owner, _, _ = make_owner()
+
+    assert Scheduler(owner).find_next_free_slot(30, DAY) == at(6, 0)
+
+
+def test_free_slot_skips_busy_time_and_uses_the_first_gap_that_fits():
+    owner, mochi, _ = make_owner()
+    mochi.add_task(make_task("early", 6, 0, 60))   # 06:00-07:00
+    mochi.add_task(make_task("next", 7, 30, 60))   # 07:30-08:30, leaves a 30 min gap
+
+    scheduler = Scheduler(owner)
+
+    assert scheduler.find_next_free_slot(30, DAY) == at(7, 0)    # fits in the gap
+    assert scheduler.find_next_free_slot(45, DAY) == at(8, 30)   # too big for the gap
+
+
+def test_free_slot_after_a_given_time_and_touching_tasks_leave_no_gap():
+    owner, mochi, _ = make_owner()
+    mochi.add_task(make_task("a", 8, 0, 30))
+    mochi.add_task(make_task("b", 8, 30, 30))  # back to back with a
+
+    scheduler = Scheduler(owner)
+
+    assert scheduler.find_next_free_slot(10, DAY, after=at(8, 0)) == at(9, 0)
+    assert scheduler.find_next_free_slot(10, DAY, after=at(12, 0)) == at(12, 0)
+
+
+def test_free_slot_ignores_completed_tasks_and_the_ignored_task():
+    owner, mochi, _ = make_owner()
+    done, mine = make_task("done", 6, 0, 60), make_task("mine", 6, 0, 60)
+    mochi.add_task(done)
+    mochi.add_task(mine)
+    done.completed = True
+    scheduler = Scheduler(owner)
+
+    assert scheduler.find_next_free_slot(30, DAY) == at(7, 0)
+    assert scheduler.find_next_free_slot(30, DAY, ignore=mine) == at(6, 0)
+
+
+def test_free_slot_is_none_when_the_day_is_full_or_the_task_is_too_long():
+    owner, mochi, _ = make_owner()
+    scheduler = Scheduler(owner)
+    assert scheduler.find_next_free_slot(17 * 60, DAY) is None   # longer than 06:00-22:00
+
+    mochi.add_task(make_task("all day", 6, 0, 16 * 60))          # 06:00-22:00
+    assert scheduler.find_next_free_slot(10, DAY) is None
+    assert scheduler.find_next_free_slot(10, DAY, after=at(23, 0)) is None
+
+
+def test_free_slot_is_not_offered_past_the_end_of_the_day():
+    owner, mochi, _ = make_owner()
+    mochi.add_task(make_task("late", 6, 0, 15 * 60 + 40))        # 06:00-21:40
+
+    assert Scheduler(owner).find_next_free_slot(30, DAY) is None  # would end 22:10
+
+
+# --- challenge: saving and loading ------------------------------------------
+
+def make_saved_owner() -> Owner:
+    owner = Owner("Jordan", 90)
+    mochi = Pet("Mochi", "dog", 3, "likes the park")
+    luna = Pet("Luna", "cat")
+    owner.add_pet(mochi)
+    owner.add_pet(luna)
+    mochi.add_task(make_task("walk", 7, 30, 30, 3, "daily"))
+    done = make_task("groom", 15, 0, 45, 1, "weekly")
+    mochi.add_task(done)
+    done.completed = True
+    luna.add_task(Task("feed", "Luna", 10, 2, at(8, 0)))
+    return owner
+
+
+def test_save_and_load_round_trip_keeps_everything(tmp_path):
+    owner = make_saved_owner()
+    file = tmp_path / "data.json"
+
+    owner.save_to_json(file)
+    loaded = Owner.load_from_json(file)
+
+    assert loaded == owner
+    assert loaded.pets[0].tasks[0].scheduled_time == at(7, 30)   # still a datetime
+    assert loaded.pets[0].tasks[1].completed is True
+    assert loaded.pets[1].tasks[0].pet_name == "Luna"
+
+
+def test_loaded_data_plans_the_same_as_the_original(tmp_path):
+    owner = make_saved_owner()
+    owner.save_to_json(tmp_path / "data.json")
+    loaded = Owner.load_from_json(tmp_path / "data.json")
+
+    original_plan = [t.title for t in Scheduler(owner).generate_plan(DAY)]
+    loaded_plan = [t.title for t in Scheduler(loaded).generate_plan(DAY)]
+
+    assert loaded_plan == original_plan == ["walk", "feed"]
+
+
+def test_loading_a_missing_file_returns_none(tmp_path):
+    assert Owner.load_from_json(tmp_path / "data.json") is None
+
+
+def test_saving_overwrites_the_old_file_and_leaves_no_temp_file(tmp_path):
+    file = tmp_path / "data.json"
+    Owner("First", 30).save_to_json(file)
+    Owner("Second", 60).save_to_json(file)
+
+    assert Owner.load_from_json(file).name == "Second"
+    assert [p.name for p in tmp_path.iterdir()] == ["data.json"]
+
+
+@pytest.mark.parametrize("content", [
+    "not json at all",
+    "[1, 2, 3]",
+    '{"name": "Jordan"}',                                             # missing field
+    '{"name": "J", "available_minutes": "lots", "pets": []}',         # wrong type
+    '{"name": "J", "available_minutes": 5, "pets": [{"name": "M", "species": "dog",'
+    ' "tasks": [{"title": "t"}]}]}',                                  # task missing fields
+])
+def test_unreadable_data_raises_a_clear_value_error(tmp_path, content):
+    file = tmp_path / "data.json"
+    file.write_text(content, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="data.json could not be read"):
+        Owner.load_from_json(file)
+
+
+# --- challenge: priority-based scheduling -----------------------------------
+
+def test_priority_levels_are_ordered_plain_ints_with_labels():
+    assert (Priority.LOW, Priority.MEDIUM, Priority.HIGH) == (1, 2, 3)
+    assert Priority.HIGH > Priority.LOW
+    assert [p.label for p in Priority] == ["Low", "Medium", "High"]
+
+
+def test_task_priority_label_names_the_level_and_tolerates_unknown_numbers():
+    assert make_task(priority=3).priority_label == "High"
+    assert make_task(priority=Priority.LOW).priority_label == "Low"
+    assert make_task(priority=7).priority_label == "7"
+
+
+def test_sort_by_priority_puts_high_first_then_orders_by_time():
+    low_early = make_task("low early", 7, priority=1)
+    high_late = make_task("high late", 18, priority=3)
+    high_early = make_task("high early", 9, priority=3)
+    medium = make_task("medium", 8, priority=2)
+
+    ordered = Scheduler.sort_by_priority([low_early, high_late, medium, high_early])
+
+    assert [t.title for t in ordered] == ["high early", "high late", "medium", "low early"]
+
+
+def test_sort_by_priority_handles_empty_and_does_not_mutate():
+    assert Scheduler.sort_by_priority([]) == []
+    tasks = [make_task("a", 9, priority=1), make_task("b", 8, priority=3)]
+    Scheduler.sort_by_priority(tasks)
+    assert [t.title for t in tasks] == ["a", "b"]
+
+
+def test_high_priority_wins_when_time_is_short():
+    owner, mochi, _ = make_owner(available=40)
+    mochi.add_task(make_task("low", 7, minutes=30, priority=1))      # earliest, but least urgent
+    mochi.add_task(make_task("high", 9, minutes=30, priority=3))
+    mochi.add_task(make_task("medium", 8, minutes=10, priority=2))
+
+    plan = Scheduler(owner).generate_plan(DAY)
+
+    assert [t.title for t in plan] == ["medium", "high"]   # shown in time order, low was dropped
+
+
+def test_explanation_names_priorities_and_plan_notes_hold_the_summary_lines():
+    owner, mochi, _ = make_owner(available=30)
+    mochi.add_task(make_task("walk", 8, minutes=30, priority=3))
+    mochi.add_task(make_task("groom", 9, minutes=45, priority=1))
+    scheduler = Scheduler(owner)
+    plan = scheduler.generate_plan(DAY)
+
+    notes = scheduler.plan_notes(plan)
+    explanation = scheduler.explain_plan(plan)
+
+    assert "priority High" in explanation
+    assert notes[0].startswith("Total 30 of 30 available minutes")
+    assert any("Left out: groom" in line and "Low priority" in line for line in notes)
+    assert scheduler.plan_notes([]) == []
+
+
+# --- challenge: weekly recurrence uses one formula, not a loop ---------------
+
+def test_weekly_recurrence_is_correct_and_instant_for_a_task_100000_weeks_late():
+    task = make_task(frequency="weekly")  # due Tue Oct 27 2026
+    far_future = at(9, 0, date(2026, 10, 27) + timedelta(weeks=100000, days=3))
+
+    nxt = task.mark_complete(now=far_future)
+
+    assert nxt.scheduled_time.weekday() == task.scheduled_time.weekday()
+    assert nxt.scheduled_time.date() > far_future.date()
+    assert (nxt.scheduled_time.date() - far_future.date()).days <= 7
+
+
+def test_weekly_task_completed_exactly_a_week_late_skips_that_same_day_slot():
+    task = make_task(frequency="weekly")  # due Tue Oct 27, done on Tue Nov 3
+
+    nxt = task.mark_complete(now=at(9, 0, date(2026, 11, 3)))
+
+    assert nxt.scheduled_time == at(7, 30, date(2026, 11, 10))   # the Nov 3 slot is not "after" Nov 3

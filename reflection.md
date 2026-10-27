@@ -36,6 +36,9 @@ After the first implementation I reviewed `main.py` and the logic it calls, and 
 - **Added `Scheduler.sort_by_time()` and `Owner.filter_tasks()`** so sorting and filtering by pet and status are reusable instead of being done by hand in each place.
 - **Added `Scheduler.conflict_warnings()`**, which returns a plain warning message for every pair of overlapping tasks (same pet or different pets) instead of raising an error, so the program keeps running and the UI can just display the messages.
 - **Added `Scheduler.conflicts_for(task)`** so the UI can warn about an overlap when a task is added, not only after the plan is built.
+- **Fixed duplicate recurring tasks.** One of my edge-case tests showed that completing an already-completed recurring task created a second copy of its next occurrence. `Task.mark_complete()` now returns nothing for a task that is already done.
+
+When I connected the Streamlit UI, I found that the conflict warning told the owner to move a task but the app had no way to do it, so I added an "Edit or remove a task" panel (including a date field to move a task to another day). I also added a "Mark a task complete" panel, because without it the recurrence logic could never be reached from the app.
 
 Issues I noticed during that review and how I settled them when implementing the classes:
 - **`pet_name` duplicates the pet's name.** `Pet.add_task()` now sets it, and `Owner.add_pet()` sets it on any tasks a pet already has. It can still go stale if a pet is renamed later.
@@ -87,9 +90,23 @@ I accepted its design suggestions after reading them: adding `pet_name` to `Task
 
 Two of its outputs needed correcting after I checked them. First, it wrote a nested generic return type for `detect_conflicts()` in the UML. When I pasted the diagram into the Mermaid Live Editor it rendered wrongly as `list<tuple>Task,Task<>`, so the type was simplified to `list~tuple~`. Second, its first tests passed with `python -m pytest` but the plain `pytest` command in my README failed to import `pawpal_system`, so a `pytest.ini` was added to fix that.
 
-I verified the results by running them: rendering the diagram, running `main.py` with and without the overlapping `--conflict` task to see the conflict lines, and running pytest myself and getting the same two passing tests.
+I verified the results by running them: rendering the diagram, running `main.py` with and without the overlapping `--conflict` task to see the conflict lines, and running pytest myself and getting the same passing results the AI reported.
 
 I also changed one of its results later. I had asked for a recurring task's next due date to be "today + 1 day", and it implemented that for weekly tasks as well. I realized that a weekly task tied to a specific day of the week would drift to a different weekday if it was completed late, so I asked for weekday alignment. The code now keeps weekly tasks on their weekday and still uses today + 1 day for daily ones. I confirmed it with new tests for late, very late, and early completion, and by running the app in the browser.
+
+**c. AI strategy**
+
+- **Which AI coding assistant features were most effective for building the scheduler?**
+  - *Brainstorming before executing.* I asked it to propose classes and responsibilities and talked through them before any file was touched, so the code started from a design I had already agreed to.
+  - *Reviewing code I already had.* Asking it to review my class skeleton and my `main.py` demo surfaced missing relationships (nothing added the next occurrence of a recurring task) and a real bug (tomorrow's recurring task showing up in today's plan).
+  - *Running things instead of only writing them.* After each change it ran pytest, ran `main.py`, and drove the Streamlit app without a browser. That caught the duplicate-recurring-task bug and a dropdown that edited the wrong task when two tasks looked identical.
+  - *Keeping files in sync.* One change could update the code, the UML, the tests, the README, and this reflection together, so they didn't drift apart.
+
+- **One suggestion I rejected to keep the design clean.** The AI recommended removing the `[same pet]` and `[different pets]` tags from the conflict warnings shown in the UI, to make them read more simply. I decided to leave them. Stripping them only in the UI would have meant two versions of the same message, one in the app and another in the Scheduler, the terminal demo, the tests, and the README. Keeping one message format, produced in one place by the Scheduler, keeps the design simple and makes the same-pet versus different-pets check visible everywhere. (A second example is the weekly-recurrence change in 3b, where I overruled the "today + 1 day" rule for weekly tasks.)
+
+- **Did separate chat sessions for different phases help?** I didn't use separate sessions. I stayed organized by keeping my prompts neat and focused on one step at a time, committing at checkpoints, and updating the UML, README, and reflection as I went. The tradeoff is that one long conversation depends on the committed files, not the chat history, as the record of what was decided.
+
+- **What I learned about being the "lead architect."** The AI is fast and usually right, but it makes confident mistakes (a diagram type that didn't render, a test setup that failed under plain `pytest`, a recurrence rule that drifted weekly tasks off their weekday). My job was to set the design (four classes and who owns what), make the rules the code had to follow (higher priority number means more urgent, the plan never moves a task, weekly tasks keep their weekday), and verify everything by running it. I also stayed in control of anything outward-facing, such as when to commit and push. I treated the AI as a very capable collaborator whose work I reviewed, not as the decision-maker.
 
 ---
 
@@ -100,14 +117,14 @@ I also changed one of its results later. I had asked for a recurring task's next
 - What behaviors did you test?
 - Why were these tests important?
 
-I wrote 45 pytest tests covering sorting, recurring tasks, filtering, conflict detection, and planning, including edge cases such as a pet with no tasks, two tasks at the exact same time, an overlap across midnight, and a weekly task completed late. These matter because the scheduler is built on small rules that are easy to break quietly, like which day a recurring task lands on. I also ran `main.py`, with and without an overlapping task, to see the plan, the left-out task, and the conflict lines.
+I wrote 78 pytest tests covering sorting, recurring tasks, filtering, conflict detection, and planning, including edge cases such as a pet with no tasks, two tasks at the exact same time, an overlap across midnight, and a weekly task completed late. These matter because the scheduler is built on small rules that are easy to break quietly, like which day a recurring task lands on. I also ran `main.py`, with and without an overlapping task, to see the plan, the left-out task, and the conflict lines.
 
 **b. Confidence**
 
 - How confident are you that your scheduler works correctly?
 - What edge cases would you test next if you had more time?
 
-I'm fairly confident, about 4 out of 5: all 45 tests pass, and they found one real bug (completing a recurring task twice created a duplicate). I'm not at 5 because the Streamlit UI isn't covered by pytest and I only checked it by clicking through it. Next I would test zero-length tasks, leap-day weekly tasks, and add automated tests for the UI.
+I'm fairly confident, about 4 out of 5: all 78 tests pass, and they found one real bug (completing a recurring task twice created a duplicate). I'm not at 5 because the Streamlit UI isn't covered by pytest and I only checked it by clicking through it. Next I would test zero-length tasks, leap-day weekly tasks, and add automated tests for the UI.
 
 ---
 
@@ -123,10 +140,10 @@ I'm most satisfied that the Scheduler plans across all pets through `Owner.get_a
 
 - If you had another iteration, what would you improve or redesign?
 
-I would connect the logic to the Streamlit UI, add tests for the scheduler, and replace the `pet_name` string on `Task` with a real link to its `Pet` so a rename can't leave it stale.
+I would replace the `pet_name` string on `Task` with a real link to its `Pet` so a rename can't leave it stale, add automated tests for the Streamlit UI (it is currently only checked by clicking through it), and validate zero-length tasks in the logic layer. I would also let the planner suggest a free slot for a conflicting task instead of only warning about it.
 
 **c. Key takeaway**
 
 - What is one important thing you learned about designing systems or working with AI on this project?
 
-Settling the design before writing code made the implementation much easier, and AI works best when I give it a clear design to build from and then check its output by running it.
+Settling the design before writing code made the implementation much easier, and AI works best when I give it a clear design to build from and then check its output by running it. As the lead architect, my job wasn't to type the code. It was to decide what the system should be, set the rules, and make sure every result was verified, and that is what turned this from a coding exercise into a finished project I can explain, including why it is built the way it is.

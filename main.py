@@ -1,11 +1,16 @@
 """Temporary testing ground: run the PawPal+ logic in the terminal.
 
-Run `python main.py`, or `python main.py --conflict` to add an overlapping task.
+Run `python main.py`. Options:
+  --minutes N   how many minutes the owner has today (default 90); a small number shows
+                high-priority tasks winning when time is short
+  --conflict    add a task that overlaps two others
 """
 
+import argparse
 import sys
 from datetime import datetime
 
+from formatting import tasks_table
 from pawpal_system import Owner, Pet, Scheduler, Task
 
 
@@ -14,13 +19,9 @@ def at(hour: int, minute: int = 0) -> datetime:
     return today.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
-def show(heading: str, tasks: list[Task]) -> None:
+def show(heading: str, tasks: list[Task], **table_options) -> None:
     print(f"\n{heading}")
-    if not tasks:
-        print("  (none)")
-    for task in tasks:
-        status = "done" if task.completed else "pending"
-        print(f"  {task.scheduled_time:%a %H:%M} {task.title} ({task.pet_name}, {status})")
+    print(tasks_table(tasks, **table_options))
 
 
 def demo_same_time_warnings() -> None:
@@ -47,7 +48,13 @@ def demo_same_time_warnings() -> None:
 
 
 def main() -> None:
-    owner = Owner(name="Jordan", available_minutes=90)
+    sys.stdout.reconfigure(encoding="utf-8")  # so emojis print on any terminal, even when redirected
+    parser = argparse.ArgumentParser(description="PawPal+ terminal demo")
+    parser.add_argument("--minutes", type=int, default=90, help="minutes available today")
+    parser.add_argument("--conflict", action="store_true", help="add a task that overlaps two others")
+    args = parser.parse_args()
+
+    owner = Owner(name="Jordan", available_minutes=args.minutes)
 
     mochi = Pet(name="Mochi", species="dog", age=3)
     luna = Pet(name="Luna", species="cat", age=5, notes="Needs medication with food")
@@ -56,14 +63,14 @@ def main() -> None:
 
     scheduler = Scheduler(owner)
 
-    # Added on purpose in reverse time order, mixed across pets.
+    # Added on purpose in reverse time order, mixed across pets and priorities.
     luna.add_task(Task("Play session", "", 20, 2, at(18, 0)))
     mochi.add_task(Task("Grooming", "", 45, 1, at(15, 0), "weekly"))
     luna.add_task(Task("Breakfast and medication", "", 10, 3, at(8, 0), "daily"))
     walk = Task("Morning walk", "", 30, 3, at(7, 30), "daily")
     mochi.add_task(walk)
 
-    if "--conflict" in sys.argv:
+    if args.conflict:
         vet_call = Task("Vet video call", "", 20, 3, at(7, 45))
         for clash in scheduler.conflicts_for(vet_call):
             print(f"Warning: Vet video call overlaps {clash.title} ({clash.pet_name}).")
@@ -73,21 +80,25 @@ def main() -> None:
 
     print(f"Today's Schedule for {owner.name} ({owner.available_minutes} min available)")
     print("=" * 60)
-    print(scheduler.explain_plan(plan))
+    print(tasks_table(plan, show_status=False))
+    for note in scheduler.plan_notes(plan):
+        print(note)
 
-    show("Tasks in the order they were added (grouped by pet):", owner.get_all_tasks())
-    show("Sorted by time:", scheduler.sort_by_time(owner.get_all_tasks()))
+    everything = owner.get_all_tasks()
+    show("All tasks in the order they were added (grouped by pet)", everything, show_date=True)
+    show("Sorted by time", scheduler.sort_by_time(everything), show_date=True)
+    show("Sorted by priority, then time", scheduler.sort_by_priority(everything), show_date=True)
 
     mochi.complete_task(walk)
     print(f"\nCompleted '{walk.title}'; its next occurrence was added.")
 
-    show("Filter: Mochi's tasks", scheduler.sort_by_time(owner.filter_tasks(pet_name="Mochi")))
-    show("Filter: pending tasks", scheduler.sort_by_time(owner.filter_tasks(completed=False)))
-    show("Filter: done tasks", scheduler.sort_by_time(owner.filter_tasks(completed=True)))
-    show(
-        "Filter: Luna's pending tasks",
-        scheduler.sort_by_time(owner.filter_tasks(pet_name="Luna", completed=False)),
-    )
+    for heading, tasks in [
+        ("Filter: Mochi's tasks", owner.filter_tasks(pet_name="Mochi")),
+        ("Filter: pending tasks", owner.filter_tasks(completed=False)),
+        ("Filter: done tasks", owner.filter_tasks(completed=True)),
+        ("Filter: Luna's pending tasks", owner.filter_tasks(pet_name="Luna", completed=False)),
+    ]:
+        show(heading, scheduler.sort_by_time(tasks), show_date=True)
 
     demo_same_time_warnings()
 

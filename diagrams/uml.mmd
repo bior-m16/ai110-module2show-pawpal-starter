@@ -1,4 +1,19 @@
 classDiagram
+    %% Final design. Task, Pet and Owner are dataclasses; Scheduler is a plain class.
+    %% priority: higher number = more urgent (1 low, 2 medium, 3 high).
+    %% frequency: "once", "daily" or "weekly".
+    %% Scheduler.sort_by_time is a static method; from_dict and load_from_json are class methods.
+    %% to_dict/from_dict turn objects into plain dicts for the data.json file.
+    %% formatting.py (badges, emojis, tabulate tables) sits outside these classes and only displays tasks.
+
+    class Priority {
+        <<enumeration>>
+        LOW = 1
+        MEDIUM = 2
+        HIGH = 3
+        +label str
+    }
+
     class Owner {
         +str name
         +int available_minutes
@@ -7,6 +22,10 @@ classDiagram
         +remove_pet(pet) None
         +get_all_tasks() list~Task~
         +filter_tasks(pet_name, completed) list~Task~
+        +to_dict() dict
+        +from_dict(data) Owner
+        +save_to_json(path) None
+        +load_from_json(path) Optional~Owner~
     }
 
     class Pet {
@@ -19,6 +38,8 @@ classDiagram
         +remove_task(task) None
         +get_pending_tasks() list~Task~
         +complete_task(task, now) None
+        +to_dict() dict
+        +from_dict(data) Pet
     }
 
     class Task {
@@ -26,22 +47,33 @@ classDiagram
         +str pet_name
         +int duration_minutes
         +int priority
+        +priority_label str
         +datetime scheduled_time
         +str frequency
         +bool completed
         +mark_complete(now) Optional~Task~
+        +to_dict() dict
+        +from_dict(data) Task
+        -_next_time(today) Optional~datetime~
     }
 
     class Scheduler {
         +Owner owner
         +sort_by_time(tasks) list~Task~
+        +sort_by_priority(tasks) list~Task~
         +generate_plan(day) list~Task~
         +detect_conflicts(tasks) list~tuple~
         +conflict_warnings(tasks) list~str~
         +conflicts_for(task) list~Task~
+        +find_next_free_slot(duration_minutes, day, after, ignore) Optional~datetime~
         +explain_plan(plan) str
+        +plan_notes(plan) list~str~
+        -_pending_on(day) list~Task~
     }
 
     Owner "1" *-- "*" Pet : has
     Pet "1" *-- "*" Task : has
-    Scheduler --> Owner : plans for
+    Pet ..> Task : complete_task adds the next occurrence
+    Scheduler --> Owner : reads tasks through
+    Scheduler ..> Task : sorts, plans and flags conflicts
+    Task ..> Priority : has a level

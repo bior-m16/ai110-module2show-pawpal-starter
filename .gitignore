@@ -3,3 +3,7 @@ __pycache__/
 .venv_new/
 .pytest_cache/
 .DS_Store
+# Saved app data (created when you run the app)
+data.json
+data.json.bak
+data.json.tmp

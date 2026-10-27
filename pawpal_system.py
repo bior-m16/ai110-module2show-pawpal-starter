@@ -10,11 +10,32 @@ Conventions:
 
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
+from enum import IntEnum
+from pathlib import Path
 from typing import Optional
 
 RECURRENCE = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1)}
+
+# The hours of a day in which find_next_free_slot looks for room.
+DAY_START = time(6, 0)
+DAY_END = time(22, 0)
+
+
+class Priority(IntEnum):
+    """How urgent a task is. A higher number is more urgent, and each level is a plain int."""
+
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+
+    @property
+    def label(self) -> str:
+        """Return the level as a word: "Low", "Medium" or "High"."""
+        return self.name.capitalize()
 
 
 def _end_time(task: Task) -> datetime:
@@ -49,6 +70,14 @@ class Task:
     frequency: str = "once"  # "once", "daily", or "weekly"
     completed: bool = False
 
+    @property
+    def priority_label(self) -> str:
+        """Return the priority as a word ("Low", "Medium", "High"), or the number if unknown."""
+        try:
+            return Priority(self.priority).label
+        except ValueError:
+            return str(self.priority)
+
     def mark_complete(self, now: Optional[datetime] = None) -> Optional[Task]:
         """Mark this task done; if it recurs, return a new task for its next occurrence.
 
@@ -66,25 +95,47 @@ class Task:
             return None
         return replace(self, scheduled_time=next_time, completed=False)
 
+    def to_dict(self) -> dict:
+        """Return this task as plain JSON-friendly data (the time becomes an ISO string)."""
+        return {
+            "title": self.title,
+            "pet_name": self.pet_name,
+            "duration_minutes": self.duration_minutes,
+            "priority": self.priority,
+            "scheduled_time": self.scheduled_time.isoformat(),
+            "frequency": self.frequency,
+            "completed": self.completed,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Task:
+        """Rebuild a task from to_dict() data. Raises KeyError, TypeError or ValueError if invalid."""
+        return cls(
+            title=str(data["title"]),
+            pet_name=str(data["pet_name"]),
+            duration_minutes=int(data["duration_minutes"]),
+            priority=int(data["priority"]),
+            scheduled_time=datetime.fromisoformat(data["scheduled_time"]),
+            frequency=str(data.get("frequency", "once")),
+            completed=bool(data.get("completed", False)),
+        )
+
     def _next_time(self, today: date) -> Optional[datetime]:
         """Return when this task next recurs after the given day, or None if it doesn't.
 
-        Daily tasks start counting from `today` at the task's time of day. Weekly tasks
-        start from the original date and step forward a week at a time until the date is
-        after `today`, which keeps them on the same weekday.
+        Daily tasks recur one day after `today` at the task's time of day. Weekly tasks
+        recur at `scheduled_time + k weeks`, using the smallest k >= 1 whose date is after
+        `today`; that keeps them on the same weekday however late or early they were
+        completed. k comes from one division, so it takes the same time for a task a day
+        late or a hundred weeks late.
         """
         step = RECURRENCE.get(self.frequency)
         if step is None:
             return None
         if self.frequency == "daily":
-            anchor = datetime.combine(today, self.scheduled_time.time())
-        else:
-            anchor = self.scheduled_time  # weekly keeps its original weekday
-        next_time = anchor + step
-        while next_time.date() <= today:
-            next_time += step
-        return next_time
-
+            return datetime.combine(today, self.scheduled_time.time()) + step
+        weeks_late = (today - self.scheduled_time.date()).days // 7
+        return self.scheduled_time + step * max(1, weeks_late + 1)
 
 @dataclass
 class Pet:
@@ -119,6 +170,27 @@ class Pet:
         next_task = task.mark_complete(now)
         if next_task is not None:
             self.add_task(next_task)
+
+    def to_dict(self) -> dict:
+        """Return this pet, with all of its tasks, as plain JSON-friendly data."""
+        return {
+            "name": self.name,
+            "species": self.species,
+            "age": self.age,
+            "notes": self.notes,
+            "tasks": [task.to_dict() for task in self.tasks],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Pet:
+        """Rebuild a pet and its tasks from to_dict() data."""
+        return cls(
+            name=str(data["name"]),
+            species=str(data["species"]),
+            age=int(data.get("age", 0)),
+            notes=str(data.get("notes", "")),
+            tasks=[Task.from_dict(item) for item in data.get("tasks", [])],
+        )
 
 
 @dataclass
@@ -158,6 +230,47 @@ class Owner:
             and (completed is None or task.completed == completed)
         ]
 
+    def to_dict(self) -> dict:
+        """Return the owner, with every pet and task, as plain JSON-friendly data."""
+        return {
+            "name": self.name,
+            "available_minutes": self.available_minutes,
+            "pets": [pet.to_dict() for pet in self.pets],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Owner:
+        """Rebuild an owner, their pets and tasks from to_dict() data."""
+        owner = cls(name=str(data["name"]), available_minutes=int(data["available_minutes"]))
+        for pet_data in data.get("pets", []):
+            owner.add_pet(Pet.from_dict(pet_data))
+        return owner
+
+    def save_to_json(self, path: str | os.PathLike = "data.json") -> None:
+        """Save the owner, pets and tasks to a JSON file.
+
+        Writes to a temporary file first and then swaps it in, so a crash mid-write
+        can't leave a half-written data file behind.
+        """
+        path = Path(path)
+        temp = path.with_name(path.name + ".tmp")
+        temp.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
+        os.replace(temp, path)
+
+    @classmethod
+    def load_from_json(cls, path: str | os.PathLike = "data.json") -> Optional[Owner]:
+        """Load an owner from a JSON file; return None if the file doesn't exist yet.
+
+        Raises ValueError if the file exists but is not valid PawPal+ data.
+        """
+        path = Path(path)
+        if not path.exists():
+            return None
+        try:
+            return cls.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(f"{path.name} could not be read: {error!r}") from error
+
 
 class Scheduler:
     """Builds a daily plan from an owner's pets and tasks. Holds no data of its own."""
@@ -175,6 +288,14 @@ class Scheduler:
         """
         return sorted(tasks, key=lambda t: t.scheduled_time)
 
+    @staticmethod
+    def sort_by_priority(tasks: list[Task]) -> list[Task]:
+        """Return a new list ordered by priority first (High, then Medium, then Low), then by time.
+
+        Tasks with the same priority are ordered by scheduled start time, earliest first.
+        """
+        return sorted(tasks, key=lambda t: (-t.priority, t.scheduled_time))
+
     def _pending_on(self, day: date) -> list[Task]:
         """Return the owner's pending tasks, across all pets, that start on the given day."""
         return [
@@ -189,8 +310,7 @@ class Scheduler:
         task that doesn't fit is skipped so a shorter one can still use the remaining
         minutes. The chosen tasks come back in chronological order.
         """
-        pending = self._pending_on(day or date.today())
-        by_importance = sorted(pending, key=lambda t: (-t.priority, t.scheduled_time))
+        by_importance = self.sort_by_priority(self._pending_on(day or date.today()))
 
         chosen: list[Task] = []
         minutes_used = 0
@@ -241,23 +361,65 @@ class Scheduler:
             if existing is not task and _overlaps(task, existing)
         ]
 
+    def find_next_free_slot(
+        self,
+        duration_minutes: int,
+        day: Optional[date] = None,
+        after: Optional[datetime] = None,
+        ignore: Optional[Task] = None,
+    ) -> Optional[datetime]:
+        """Return the earliest start time on `day` with `duration_minutes` of free time, or None.
+
+        Looks between DAY_START and DAY_END (06:00-22:00), and not before `after` if given.
+        Sweeps the day's pending tasks in time order, keeping a cursor at the end of
+        everything seen so far; the first gap before the next task (or before the end of
+        the day) that is long enough is the answer. `ignore` leaves one task out, so an
+        existing task can be asked where it could move to. Touching tasks leave no gap.
+        """
+        day = day or date.today()
+        needed = timedelta(minutes=duration_minutes)
+        limit = datetime.combine(day, DAY_END)
+        cursor = datetime.combine(day, DAY_START)
+        if after is not None:
+            cursor = max(cursor, after)
+
+        busy = self.sort_by_time(
+            [
+                t for t in self.owner.filter_tasks(completed=False)
+                if t is not ignore and _end_time(t) > cursor and t.scheduled_time < limit
+            ]
+        )
+        for task in busy:
+            if cursor + needed <= min(task.scheduled_time, limit):
+                return cursor
+            cursor = max(cursor, _end_time(task))
+        return cursor if cursor + needed <= limit else None
+
     def explain_plan(self, plan: list[Task]) -> str:
         """Explain why each task in the given plan was placed where it was."""
         if not plan:
             return "No tasks were scheduled."
+        lines = [
+            f"{task.scheduled_time:%H:%M} - {task.title} ({task.pet_name}, "
+            f"{task.duration_minutes} min, priority {task.priority_label})"
+            for task in plan
+        ]
+        return "\n".join(lines + self.plan_notes(plan))
 
-        lines = []
-        for task in plan:
-            lines.append(
-                f"{task.scheduled_time:%H:%M} - {task.title} ({task.pet_name}, "
-                f"{task.duration_minutes} min, priority {task.priority})"
-            )
+    def plan_notes(self, plan: list[Task]) -> list[str]:
+        """Return the lines that explain a plan beyond its task list.
+
+        These are the minutes used out of the available minutes, any pending task that
+        was left out because it didn't fit, and any conflicts inside the plan.
+        """
+        if not plan:
+            return []
 
         used = sum(t.duration_minutes for t in plan)
-        lines.append(
+        lines = [
             f"Total {used} of {self.owner.available_minutes} available minutes. "
-            "Tasks were chosen by priority, then earliest time, and listed in time order."
-        )
+            "Tasks were chosen by priority (High first), then earliest time, and listed in time order."
+        ]
 
         # Compare by identity: two tasks with identical fields are equal as dataclasses.
         planned_ids = {id(t) for t in plan}
@@ -267,10 +429,10 @@ class Scheduler:
         ]
         for task in left_out:
             lines.append(
-                f"Left out: {task.title} ({task.pet_name}, {task.duration_minutes} min) "
-                "did not fit in the remaining time."
+                f"Left out: {task.title} ({task.pet_name}, {task.priority_label} priority, "
+                f"{task.duration_minutes} min) did not fit in the remaining time."
             )
 
         for first, second in self.detect_conflicts(plan):
             lines.append(f"Conflict: {_describe_conflict(first, second)}")
-        return "\n".join(lines)
+        return lines
